@@ -2,11 +2,12 @@
 
 This workspace is a **safe-ish VM lab**, not a host OS modification project. The host is Windows; the guest is minimal Debian Linux. Source code lives only in Windows and is sent one way into the VM via loopback SSH.
 
-**Status: Level 1 v0.2 research prototype.** A native C11, read-only pressure
+**Status: Level 1 v0.3 research prototype.** A native C11, read-only pressure
 observer and bounded recommendation engine now lives in `src/level1`. It has no
-actuator and makes no resource-control changes. See
-`docs/L1-v0.2-validation.md` for its audit, tests, benchmark method, results,
-and limitations.
+actuator and makes no resource-control changes. V0.3 adds monotonic adaptation
+gates, corruption-detecting local behavior-memory persistence, deterministic
+replay experiments, and CI. See `docs/L1-v0.3-validation.md` for results and
+limitations.
 
 ## Prerequisites
 
@@ -111,5 +112,5 @@ Backups are placed in `vm/backups/` and **not** in Git. QEMU's disk-image toolin
 Validate Level 1 decisions and observer overhead before discussing any
 actuator. No automatic scheduling changes are present or authorized.
 
-See `docs/architecture.md`, `docs/L1-v0.2-validation.md`, and
+See `docs/architecture.md`, `docs/L1-v0.3-validation.md`, and
 `docs/level1-questions.md`.

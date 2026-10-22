@@ -10,6 +10,8 @@
 #include <time.h>
 
 typedef enum { ENGINE_L1, ENGINE_BASELINE } Engine;
+enum { MAX_LIVE_SAMPLES = 1000000 };
+static const uint64_t max_core_samples = UINT64_C(1000000000);
 
 static L1Action fixed_rule(L1Observation o) {
     if (!o.valid || o.cpu_some_bp > 10000 || o.memory_full_bp > 10000 ||
@@ -25,12 +27,17 @@ static double seconds_between(struct timespec a, struct timespec b) {
            (double)(b.tv_nsec - a.tv_nsec) / 1e9;
 }
 
-static uint64_t parse_count(const char *text) {
+static bool parse_count(const char *text, uint64_t maximum, uint64_t *result) {
+    if (text == NULL || result == NULL || text[0] < '0' || text[0] > '9') {
+        return false;
+    }
     errno = 0;
     char *end = NULL;
     unsigned long long value = strtoull(text, &end, 10);
-    if (errno || end == text || *end != '\0' || value == 0) return 0;
-    return (uint64_t)value;
+    if (errno || end == text || *end != '\0' || value == 0 ||
+        value > maximum || (uint64_t)value != value) return false;
+    *result = (uint64_t)value;
+    return true;
 }
 
 static int run_core(Engine engine, uint64_t count) {
@@ -42,7 +49,7 @@ static int run_core(Engine engine, uint64_t count) {
     clock_gettime(CLOCK_MONOTONIC, &start);
     for (uint64_t i = 0; i < count; ++i) {
         o.cpu_some_bp = (uint16_t)(((i & 1023U) < 800U) ? 3400 : 0);
-        checksum += (unsigned)(engine == ENGINE_L1 ? l1_step(&core, o) :
+        checksum += (unsigned)(engine == ENGINE_L1 ? l1_step_at(&core, o, i) :
                                                     fixed_rule(o));
     }
     clock_gettime(CLOCK_MONOTONIC, &end);
@@ -65,8 +72,12 @@ static int run_live(Engine engine, uint64_t count) {
     for (uint64_t i = 0; i < count; ++i) {
         L1Observation observation;
         if (l1_read_linux_observation(&observation)) ++valid_observations;
-        checksum += (unsigned)(engine == ENGINE_L1 ? l1_step(&core, observation) :
-                                                    fixed_rule(observation));
+        struct timespec observed_at;
+        clock_gettime(CLOCK_MONOTONIC, &observed_at);
+        uint64_t observed_ms = (uint64_t)observed_at.tv_sec * UINT64_C(1000) +
+                               (uint64_t)observed_at.tv_nsec / UINT64_C(1000000);
+        checksum += (unsigned)(engine == ENGINE_L1 ?
+            l1_step_at(&core, observation, observed_ms) : fixed_rule(observation));
     }
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &cpu_end);
     clock_gettime(CLOCK_MONOTONIC, &wall_end);
@@ -89,8 +100,14 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Usage: %s {core|live} {l1|fixed} COUNT\n", argv[0]);
         return 2;
     }
-    uint64_t count = parse_count(argv[3]);
-    if (count == 0) return 2;
+    uint64_t maximum = strcmp(argv[1], "core") == 0 ? max_core_samples :
+                                                        MAX_LIVE_SAMPLES;
+    uint64_t count;
+    if (!parse_count(argv[3], maximum, &count)) {
+        fprintf(stderr, "COUNT must be 1..%" PRIu64 " for %s mode\n",
+                maximum, argv[1]);
+        return 2;
+    }
     Engine engine = strcmp(argv[2], "l1") == 0 ? ENGINE_L1 : ENGINE_BASELINE;
     return strcmp(argv[1], "core") == 0 ? run_core(engine, count) :
                                            run_live(engine, count);

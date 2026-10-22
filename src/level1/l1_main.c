@@ -18,47 +18,83 @@ static bool parse_integer(const char *s, unsigned long max, unsigned long *resul
     return true;
 }
 
-static void maybe_load(L1Core *core, const char *path) {
-    if (!path) return;
+static bool maybe_load(L1Core *core, const char *path) {
+    if (!path) return false;
     L1Policy candidate;
     char error[128];
     if (!l1_read_policy(path, &candidate, error, sizeof(error))) {
         fprintf(stderr, "L1: policy ignored (%s); continuing safely\n", error);
-        return;
+        return false;
     }
     if (candidate.generation > core->policy.generation &&
         l1_apply_policy(core, &candidate)) {
         fprintf(stderr, "L1: applied validated behavior memory generation %" PRIu32 "\n",
                 core->policy.generation);
+        return true;
     }
+    return false;
+}
+
+static bool monotonic_ms(uint64_t *result) {
+    struct timespec now;
+    if (result == NULL || clock_gettime(CLOCK_MONOTONIC, &now) != 0 ||
+        now.tv_sec < 0) return false;
+    *result = (uint64_t)now.tv_sec * UINT64_C(1000) +
+              (uint64_t)now.tv_nsec / UINT64_C(1000000);
+    return true;
 }
 
 int main(int argc, char **argv) {
     unsigned long samples = 8; /* 0 = continuous */
     unsigned long interval_ms = 1000;
     const char *policy_file = NULL;
+    const char *state_file = NULL;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--policy") && i + 1 < argc) {
             policy_file = argv[++i];
+        } else if (!strcmp(argv[i], "--state") && i + 1 < argc) {
+            state_file = argv[++i];
         } else if (!strcmp(argv[i], "--samples") && i + 1 < argc) {
             if (!parse_integer(argv[++i], 100000000UL, &samples)) return 2;
         } else if (!strcmp(argv[i], "--interval-ms") && i + 1 < argc) {
             if (!parse_integer(argv[++i], 5000, &interval_ms) || interval_ms < 250) return 2;
         } else {
-            fprintf(stderr, "Usage: %s [--samples N (0=forever)] [--interval-ms 250..5000] [--policy FILE]\n", argv[0]);
+            fprintf(stderr, "Usage: %s [--samples N (0=forever)] [--interval-ms 250..5000] [--policy FILE] [--state FILE]\n", argv[0]);
             return 2;
         }
     }
     L1Core core;
     l1_init(&core);
-    fprintf(stderr, "HMI L1 v0.2: READ-ONLY advisory mode; no hardware / OS writes\n");
+    if (state_file != NULL) {
+        char error[128];
+        if (l1_state_load(state_file, &core, error, sizeof(error))) {
+            fprintf(stderr, "L1: recovered validated local state generation %" PRIu32 "\n",
+                    core.policy.generation);
+        } else {
+            fprintf(stderr, "L1: state not recovered (%s); using safe defaults\n", error);
+        }
+    }
+    fprintf(stderr, "HMI L1 v0.3: READ-ONLY resource advisory mode; no hardware / OS controls\n");
     for (unsigned long i = 0; samples == 0 || i < samples; ++i) {
         /* A file is only an L2-style memory proposal, not directly writable core memory.
            For live use L2 must publish a complete file via atomic rename. */
-        if (i % 5 == 0) maybe_load(&core, policy_file);
+        bool state_dirty = i % 5 == 0 && maybe_load(&core, policy_file);
         L1Observation obs;
         bool ok = l1_read_linux_observation(&obs);
-        L1Action action = l1_step(&core, obs);
+        uint64_t observed_at_ms = 0;
+        bool clock_ok = monotonic_ms(&observed_at_ms);
+        ok = ok && clock_ok;
+        if (!clock_ok) obs.valid = false;
+        uint8_t previous_extra = core.debounce_extra;
+        L1Action action = l1_step_at(&core, obs, observed_at_ms);
+        if (core.debounce_extra != previous_extra) state_dirty = true;
+        if (state_dirty && state_file != NULL) {
+            char error[128];
+            if (!l1_state_save_atomic(state_file, &core, error, sizeof(error))) {
+                fprintf(stderr, "L1: state persistence failed (%s); continuing safely\n",
+                        error);
+            }
+        }
         if (ok) {
             printf("sample=%lu cpu_some=%.2f%% mem_full=%.2f%% io_full=%.2f%% action=%s memory_gen=%" PRIu32 " self_extra=%u\n",
                 i + 1, obs.cpu_some_bp / 100.0, obs.memory_full_bp / 100.0,

@@ -1,11 +1,29 @@
 #define _POSIX_C_SOURCE 200809L
 #include "l1.h"
 
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+/* Deliberately independent of assert(3), so -DNDEBUG cannot remove checks. */
+#define assert(condition) do { \
+    if (!(condition)) { \
+        fprintf(stderr, "FAIL: %s:%d: %s\n", __FILE__, __LINE__, #condition); \
+        exit(EXIT_FAILURE); \
+    } \
+} while (0)
+
+static uint64_t test_clock_ms;
+
+static uint64_t test_next_ms(void) {
+    uint64_t now = test_clock_ms;
+    test_clock_ms += 1000;
+    return now;
+}
+
+#define l1_step(core, observation) \
+    l1_step_at((core), (observation), test_next_ms())
 
 static L1Observation observe(uint16_t cpu, uint16_t mem, uint16_t io) {
     return (L1Observation){cpu, mem, io, true};
@@ -99,22 +117,34 @@ static void test_versioned_rollback(void) {
 }
 
 static void test_bounded_slow_adaptation(void) {
-    L1Core c; l1_init(&c);
-    /* Wide blocks keep switching even at the maximum extra confirmation count. */
-    for (int window = 0; window < 3; ++window) {
-        for (int i = 0; i < L1_SELF_ADAPT_WINDOW; ++i) {
-            bool high = (i / 8) % 2 == 0;
-            l1_step(&c, observe(high ? 5000 : 0, 0, 0));
-        }
-        uint8_t expected = (uint8_t)(window + 1);
-        if (expected > L1_MAX_EXTRA_CONFIRMATIONS) {
-            expected = L1_MAX_EXTRA_CONFIRMATIONS;
-        }
-        assert(c.debounce_extra == expected);
+    L1Core fast; l1_init(&fast);
+    for (int i = 0; i < 10000; ++i) {
+        bool high = (i / 8) % 2 == 0;
+        (void)l1_step_at(&fast, observe(high ? 5000 : 0, 0, 0), 0);
     }
-    assert(l1_step(&c, (L1Observation){0, 0, 0, false}) == L1_HOLD);
-    for (int i = 0; i < L1_SELF_ADAPT_WINDOW; i++) {
-        l1_step(&c, observe(0, 0, 0));
+    assert(fast.debounce_extra == 0); /* Call frequency cannot bypass time. */
+    (void)l1_step_at(&fast, observe(5000, 0, 0),
+                     L1_SELF_ADAPT_MIN_INTERVAL_MS - 1U);
+    assert(fast.debounce_extra == 0);
+    (void)l1_step_at(&fast, observe(5000, 0, 0),
+                     L1_SELF_ADAPT_MIN_INTERVAL_MS);
+    assert(fast.debounce_extra == 1);
+    uint64_t decisions = fast.decisions;
+    assert(l1_step_at(&fast, observe(5000, 0, 0),
+                      L1_SELF_ADAPT_MIN_INTERVAL_MS - 1U) == L1_HOLD);
+    assert(fast.decisions == decisions); /* Regressing time fails closed. */
+
+    L1Core c; l1_init(&c);
+    for (uint64_t i = 0; i <= 1800; ++i) {
+        bool high = (i / 8U) % 2U == 0;
+        (void)l1_step_at(&c, observe(high ? 5000 : 0, 0, 0), i * 1000U);
+        if (i == 600) assert(c.debounce_extra == 1);
+        if (i == 1200) assert(c.debounce_extra == 2);
+    }
+    assert(c.debounce_extra == L1_MAX_EXTRA_CONFIRMATIONS);
+    assert(l1_step_at(&c, (L1Observation){0, 0, 0, false}, 1801000U) == L1_HOLD);
+    for (uint64_t i = 1802; i <= 2401; ++i) {
+        (void)l1_step_at(&c, observe(0, 0, 0), i * 1000U);
     }
     assert(c.debounce_extra == L1_MAX_EXTRA_CONFIRMATIONS - 1);
 }

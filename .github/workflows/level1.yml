@@ -1,0 +1,38 @@
+name: Level 1 C11 validation
+
+on:
+  push:
+    branches: [main, "feature/l1-v0.3-memory-stability"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/level1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and unit tests
+        run: make clean all test
+      - name: Assertions survive NDEBUG
+        run: make test-ndebug
+      - name: Deterministic replay acceptance
+        run: make clean all replay
+
+  sanitizers:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/level1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Address and undefined-behavior sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: make sanitize

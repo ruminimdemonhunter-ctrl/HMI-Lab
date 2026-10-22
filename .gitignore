@@ -11,6 +11,8 @@
 /src/level1/l1_test
 /src/level1/l1_trace_test
 /src/level1/l1_bench
+/src/level1/l1_state_test
+/src/level1/l1_replay
 *.o
 *.obj
 *.exe
@@ -28,6 +30,8 @@ __pycache__/
 *.pem
 *.key
 .ssh/
+*.l1state
+*.l1state.tmp.*
 # Temporary files
 *.log
 *.tmp

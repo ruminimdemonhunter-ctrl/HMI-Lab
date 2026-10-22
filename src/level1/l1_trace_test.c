@@ -13,7 +13,8 @@ static int run_trace(const char *name, const TraceStep *trace, size_t count) {
     L1Core core;
     l1_init(&core);
     for (size_t i = 0; i < count; ++i) {
-        L1Action actual = l1_step(&core, trace[i].observation);
+        L1Action actual = l1_step_at(&core, trace[i].observation,
+                                     (uint64_t)i * 1000U);
         if (actual != trace[i].expected) {
             fprintf(stderr, "FAIL: %s step %zu expected %s, got %s\n",
                     name, i + 1, l1_action_name(trace[i].expected),

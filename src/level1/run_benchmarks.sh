@@ -1,4 +1,5 @@
 #!/bin/sh
+# Kept LF-only by .gitattributes because this runs inside Debian.
 set -eu
 
 repetitions=${1:-5}
