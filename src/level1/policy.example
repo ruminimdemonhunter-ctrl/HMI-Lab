@@ -1,0 +1,8 @@
+# Proposed behavior memory: 100 bp = 1 percent.
+# Publish updates by writing a NEW file and atomically renaming it in the guest.
+schema_version=1
+generation=1
+cpu_trigger_bp=3000
+memory_trigger_bp=100
+io_trigger_bp=500
+confirmation_samples=3

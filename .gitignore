@@ -1,0 +1,32 @@
+# QEMU virtual machine assets
+/vm/
+*.qcow2
+*.iso
+*.img
+*.vhdx
+*.vmdk
+*.vdi
+# Compiled binaries
+/src/level1/l1_monitor
+/src/level1/l1_test
+/src/level1/l1_bench
+*.o
+*.obj
+*.exe
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+# Editors
+.vscode/*.log
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.ssh/
+# Temporary files
+*.log
+*.tmp

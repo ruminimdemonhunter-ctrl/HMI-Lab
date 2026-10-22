@@ -1,0 +1,7 @@
+# Intentionally invalid: L2 can never set the CPU trigger to zero.
+schema_version=1
+generation=2
+cpu_trigger_bp=0
+memory_trigger_bp=100
+io_trigger_bp=500
+confirmation_samples=3
