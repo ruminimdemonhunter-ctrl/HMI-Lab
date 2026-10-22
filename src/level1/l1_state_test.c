@@ -29,6 +29,21 @@ static void put_u32(unsigned char *p, uint32_t value) {
     for (unsigned i = 0; i < 4; ++i) p[i] = (unsigned char)(value >> (8U * i));
 }
 
+static void put_u16(unsigned char *p, uint16_t value) {
+    p[0] = (unsigned char)value;
+    p[1] = (unsigned char)(value >> 8);
+}
+
+static void encode_test_policy(unsigned char *data, size_t offset,
+                               const L1Policy *policy) {
+    put_u32(data + offset, policy->schema_version);
+    put_u32(data + offset + 4, policy->generation);
+    put_u16(data + offset + 8, policy->cpu_trigger_bp);
+    put_u16(data + offset + 10, policy->memory_trigger_bp);
+    put_u16(data + offset + 12, policy->io_trigger_bp);
+    data[offset + 14] = policy->confirmation_samples;
+}
+
 static uint32_t test_crc32(const unsigned char *data, size_t size) {
     uint32_t crc = UINT32_MAX;
     for (size_t i = 0; i < size; ++i) {
@@ -42,14 +57,33 @@ static uint32_t test_crc32(const unsigned char *data, size_t size) {
 }
 
 static void rewrite_as_unsupported_version(const char *path) {
-    unsigned char data[64];
+    unsigned char data[72];
     FILE *file = fopen(path, "rb");
     CHECK(file != NULL);
     CHECK(fread(data, 1, sizeof(data), file) == sizeof(data));
     CHECK(fclose(file) == 0);
-    put_u32(data + 8, 2);
-    put_u32(data + 60, test_crc32(data, 60));
+    put_u32(data + 8, 99);
+    put_u32(data + 68, test_crc32(data, 68));
     file = fopen(path, "wb");
+    CHECK(file != NULL);
+    CHECK(fwrite(data, 1, sizeof(data), file) == sizeof(data));
+    CHECK(fclose(file) == 0);
+}
+
+static void write_v1_state(const char *path, const L1Policy *active,
+                           const L1Policy *previous, uint8_t legacy_extra) {
+    unsigned char data[64] = {0};
+    static const unsigned char magic[8] =
+        {'H','M','I','L','1','S','1','\0'};
+    memcpy(data, magic, sizeof(magic));
+    put_u32(data + 8, 1);
+    put_u32(data + 12, 64);
+    encode_test_policy(data, 16, active);
+    data[31] = legacy_extra;
+    data[32] = previous != NULL ? 1U : 0U;
+    if (previous != NULL) encode_test_policy(data, 36, previous);
+    put_u32(data + 60, test_crc32(data, 60));
+    FILE *file = fopen(path, "wb");
     CHECK(file != NULL);
     CHECK(fwrite(data, 1, sizeof(data), file) == sizeof(data));
     CHECK(fclose(file) == 0);
@@ -61,6 +95,9 @@ static void assert_safe_default(const L1Core *core) {
     CHECK(core->policy.cpu_trigger_bp == defaults.cpu_trigger_bp);
     CHECK(core->action == L1_HOLD);
     CHECK(core->debounce_extra == 0);
+    CHECK(core->cpu_debounce_extra == 0);
+    CHECK(core->io_debounce_extra == 0);
+    CHECK(core->adaptation_mode == L1_ADAPT_RISK_AWARE);
     CHECK(!core->has_previous_policy);
     CHECK(!core->monotonic_initialized);
 }
@@ -83,12 +120,13 @@ int main(void) {
     second.cpu_trigger_bp = 4400;
     CHECK(l1_apply_policy(&original, &first));
     CHECK(l1_apply_policy(&original, &second));
-    original.debounce_extra = 2;
+    original.cpu_debounce_extra = 2;
+    original.io_debounce_extra = 1;
     CHECK(l1_state_save_atomic(path, &original, error, sizeof(error)));
 
     struct stat metadata;
     CHECK(stat(path, &metadata) == 0);
-    CHECK(metadata.st_size == 64);
+    CHECK(metadata.st_size == 72);
     CHECK((metadata.st_mode & (S_IRWXG | S_IRWXO)) == 0);
 
     L1Core recovered;
@@ -97,7 +135,10 @@ int main(void) {
     CHECK(recovered.policy.cpu_trigger_bp == 4400);
     CHECK(recovered.has_previous_policy);
     CHECK(recovered.previous_policy.generation == 1);
-    CHECK(recovered.debounce_extra == 2);
+    CHECK(recovered.cpu_debounce_extra == 2);
+    CHECK(recovered.io_debounce_extra == 1);
+    CHECK(recovered.debounce_extra == 0);
+    CHECK(recovered.adaptation_mode == L1_ADAPT_RISK_AWARE);
     CHECK(recovered.action == L1_HOLD && recovered.decisions == 0);
     CHECK(!recovered.monotonic_initialized);
     CHECK(l1_rollback_policy(&recovered, 3));
@@ -108,6 +149,23 @@ int main(void) {
     CHECK(l1_state_load(path, &replaced, error, sizeof(error)));
     CHECK(replaced.policy.generation == 3);
     CHECK(replaced.policy.cpu_trigger_bp == 2200);
+
+    /* V1 migration retains validated policy memory but never reinterprets the
+       old global debounce value as either V0.5 action-specific value. */
+    write_v1_state(path, &second, &first, 2);
+    CHECK(l1_state_load(path, &replaced, error, sizeof(error)));
+    CHECK(replaced.policy.generation == 2);
+    CHECK(replaced.previous_policy.generation == 1);
+    CHECK(replaced.cpu_debounce_extra == 0);
+    CHECK(replaced.io_debounce_extra == 0);
+    CHECK(replaced.debounce_extra == 0);
+    CHECK(replaced.adaptation_mode == L1_ADAPT_RISK_AWARE);
+    CHECK(l1_state_save_atomic(path, &replaced, error, sizeof(error)));
+    CHECK(stat(path, &metadata) == 0 && metadata.st_size == 72);
+
+    replaced.cpu_debounce_extra = L1_MAX_EXTRA_CONFIRMATIONS + 1U;
+    CHECK(!l1_state_save_atomic(path, &replaced, error, sizeof(error)));
+    replaced.cpu_debounce_extra = 0;
 
     corrupt_byte(path, 24);
     replaced.action = L1_PROTECT_MEMORY;
@@ -143,6 +201,6 @@ int main(void) {
 
     CHECK(unlink(path) == 0);
     CHECK(rmdir(directory) == 0);
-    puts("PASS: versioned CRC state, atomic replacement, permissions, and safe recovery");
+    puts("PASS: v2 state, v1 migration, CRC, atomic replacement, permissions, and safe recovery");
     return 0;
 }

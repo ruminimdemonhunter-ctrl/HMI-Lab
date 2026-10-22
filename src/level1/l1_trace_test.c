@@ -26,6 +26,38 @@ static int run_trace(const char *name, const TraceStep *trace, size_t count) {
     return 0;
 }
 
+static int run_risk_priority_trace(void) {
+    L1Core core;
+    l1_init(&core);
+    L1Policy policy = l1_default_policy();
+    policy.generation = 1;
+    policy.confirmation_samples = 2;
+    if (!l1_apply_policy(&core, &policy)) return 1;
+    core.cpu_debounce_extra = 2;
+    core.io_debounce_extra = 2;
+    static const TraceStep trace[] = {
+        {OBS(5000, 0, 0), L1_HOLD},
+        {OBS(5000, 200, 900), L1_HOLD},
+        {OBS(5000, 200, 900), L1_PROTECT_MEMORY},
+        {OBS(0, 0, 900), L1_PROTECT_MEMORY},
+        {OBS(0, 0, 900), L1_PROTECT_MEMORY},
+        {OBS(0, 0, 900), L1_PROTECT_MEMORY},
+        {OBS(0, 0, 900), L1_DEFER_IO}
+    };
+    for (size_t i = 0; i < sizeof(trace) / sizeof(trace[0]); i++) {
+        L1Action actual = l1_step_at(&core, trace[i].observation,
+                                     (uint64_t)i * 1000U);
+        if (actual != trace[i].expected) {
+            fprintf(stderr, "FAIL: risk-aware priority step %zu expected %s, got %s\n",
+                    i + 1, l1_action_name(trace[i].expected),
+                    l1_action_name(actual));
+            return 1;
+        }
+    }
+    puts("PASS: risk-aware memory urgency and priority transition trace");
+    return 0;
+}
+
 int main(void) {
     static const TraceStep cpu_trace[] = {
         {OBS(0, 0, 0), L1_HOLD},
@@ -63,5 +95,6 @@ int main(void) {
                         sizeof(priority_trace) / sizeof(priority_trace[0]));
     failed |= run_trace("invalid telemetry reset trace", invalid_trace,
                         sizeof(invalid_trace) / sizeof(invalid_trace[0]));
+    failed |= run_risk_priority_trace();
     return failed;
 }

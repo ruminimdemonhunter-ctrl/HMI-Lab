@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "L1: state not recovered (%s); using safe defaults\n", error);
         }
     }
-    fprintf(stderr, "HMI L1 v0.3: READ-ONLY resource advisory mode; no hardware / OS controls\n");
+    fprintf(stderr, "HMI L1 v0.5: READ-ONLY resource advisory mode; no hardware / OS controls\n");
     for (unsigned long i = 0; samples == 0 || i < samples; ++i) {
         /* A file is only an L2-style memory proposal, not directly writable core memory.
            For live use L2 must publish a complete file via atomic rename. */
@@ -85,9 +85,13 @@ int main(int argc, char **argv) {
         bool clock_ok = monotonic_ms(&observed_at_ms);
         ok = ok && clock_ok;
         if (!clock_ok) obs.valid = false;
-        uint8_t previous_extra = core.debounce_extra;
+        uint8_t previous_cpu_extra = core.cpu_debounce_extra;
+        uint8_t previous_io_extra = core.io_debounce_extra;
         L1Action action = l1_step_at(&core, obs, observed_at_ms);
-        if (core.debounce_extra != previous_extra) state_dirty = true;
+        if (core.cpu_debounce_extra != previous_cpu_extra ||
+            core.io_debounce_extra != previous_io_extra) {
+            state_dirty = true;
+        }
         if (state_dirty && state_file != NULL) {
             char error[128];
             if (!l1_state_save_atomic(state_file, &core, error, sizeof(error))) {
@@ -96,10 +100,10 @@ int main(int argc, char **argv) {
             }
         }
         if (ok) {
-            printf("sample=%lu cpu_some=%.2f%% mem_full=%.2f%% io_full=%.2f%% action=%s memory_gen=%" PRIu32 " self_extra=%u\n",
+            printf("sample=%lu cpu_some=%.2f%% mem_full=%.2f%% io_full=%.2f%% action=%s memory_gen=%" PRIu32 " self_cpu_extra=%u self_io_extra=%u\n",
                 i + 1, obs.cpu_some_bp / 100.0, obs.memory_full_bp / 100.0,
                 obs.io_full_bp / 100.0, l1_action_name(action), core.policy.generation,
-                core.debounce_extra);
+                core.cpu_debounce_extra, core.io_debounce_extra);
         } else {
             printf("sample=%lu telemetry=INVALID action=HOLD\n", i + 1);
         }
