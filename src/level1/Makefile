@@ -3,8 +3,8 @@ CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic
 CPPFLAGS ?=
 LDLIBS ?=
 
-.PHONY: all test test-ndebug sanitize bench replay clean
-all: l1_monitor l1_test l1_trace_test l1_state_test l1_bench l1_replay
+.PHONY: all test test-ndebug sanitize bench replay evaluation-ci evaluation-train evaluation-heldout clean
+all: l1_monitor l1_test l1_trace_test l1_state_test l1_bench l1_replay l1_evaluate
 
 l1_monitor: l1_main.c l1_core.c l1_policy.c l1_state.c l1_linux.c l1.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ l1_main.c l1_core.c l1_policy.c l1_state.c l1_linux.c $(LDLIBS)
@@ -24,11 +24,15 @@ l1_bench: l1_bench.c l1_core.c l1_linux.c l1.h
 l1_replay: l1_replay.c l1_core.c l1.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ l1_replay.c l1_core.c $(LDLIBS)
 
-test: l1_test l1_trace_test l1_state_test l1_bench
+l1_evaluate: evaluation/l1_evaluate.c l1_core.c l1_policy.c l1.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ evaluation/l1_evaluate.c l1_core.c l1_policy.c $(LDLIBS)
+
+test: l1_test l1_trace_test l1_state_test l1_bench l1_evaluate
 	./l1_test
 	./l1_trace_test
 	./l1_state_test
 	sh ./benchmark_args_test.sh
+	sh ./evaluation_args_test.sh
 
 test-ndebug:
 	$(MAKE) clean
@@ -45,5 +49,16 @@ bench: l1_bench
 replay: l1_replay
 	sh ./run_replays.sh 5 10000
 
+evaluation-ci: l1_evaluate
+	sh ./evaluation/run_ci.sh
+
+EVAL_POLICY ?= /tmp/l1-v04-tuned.eval.policy
+EVAL_REPETITIONS ?= 100
+evaluation-train: l1_evaluate
+	./l1_evaluate train $(EVAL_POLICY)
+
+evaluation-heldout: l1_evaluate
+	./l1_evaluate heldout $(EVAL_POLICY) $(EVAL_REPETITIONS)
+
 clean:
-	rm -f l1_monitor l1_test l1_trace_test l1_state_test l1_bench l1_replay
+	rm -f l1_monitor l1_test l1_trace_test l1_state_test l1_bench l1_replay l1_evaluate

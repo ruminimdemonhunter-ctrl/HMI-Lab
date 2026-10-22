@@ -149,6 +149,29 @@ static void test_bounded_slow_adaptation(void) {
     assert(c.debounce_extra == L1_MAX_EXTRA_CONFIRMATIONS - 1);
 }
 
+static void test_adaptation_evaluation_control(void) {
+    L1Core c; l1_init(&c);
+    assert(c.adaptation_enabled);
+    l1_set_adaptation_enabled(&c, false);
+    assert(!c.adaptation_enabled);
+    for (uint64_t i = 0; i <= 1800; ++i) {
+        bool high = (i / 8U) % 2U == 0;
+        (void)l1_step_at(&c, observe(high ? 5000 : 0, 0, 0), i * 1000U);
+    }
+    assert(c.debounce_extra == 0);
+    assert(c.valid_samples_in_window == 0);
+    assert(!c.adaptation_window_started);
+    L1Policy policy = l1_default_policy();
+    policy.generation = 1;
+    assert(l1_apply_policy(&c, &policy));
+    assert(!c.adaptation_enabled); /* Policy memory cannot toggle this control. */
+
+    l1_set_adaptation_enabled(&c, true);
+    assert(c.adaptation_enabled);
+    assert(c.debounce_extra == 0);
+    l1_set_adaptation_enabled(NULL, false);
+}
+
 static void test_psi_parsing(void) {
     uint16_t bp = 0;
     assert(l1_parse_psi_percent("some avg10=12.34 avg60=1.00 avg300=1.00 total=1\n", "some", &bp));
@@ -209,6 +232,7 @@ int main(void) {
     test_complete_safety_envelope();
     test_versioned_rollback();
     test_bounded_slow_adaptation();
+    test_adaptation_evaluation_control();
     test_psi_parsing();
     test_file_policy();
     test_invalid_policy_files();

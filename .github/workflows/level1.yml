@@ -2,7 +2,7 @@ name: Level 1 C11 validation
 
 on:
   push:
-    branches: [main, "feature/l1-v0.3-memory-stability"]
+    branches: [main, "feature/l1-v0.3-memory-stability", "feature/l1-v0.4-adaptive-evaluation"]
   pull_request:
     branches: [main]
 
@@ -23,6 +23,8 @@ jobs:
         run: make test-ndebug
       - name: Deterministic replay acceptance
         run: make clean all replay
+      - name: Bounded adaptive evaluation
+        run: make evaluation-ci
 
   sanitizers:
     runs-on: ubuntu-latest

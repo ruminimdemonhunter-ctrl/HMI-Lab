@@ -17,6 +17,17 @@ void l1_init(L1Core *core) {
     core->policy = l1_default_policy();
     core->action = L1_HOLD;
     core->candidate = L1_HOLD;
+    core->adaptation_enabled = true;
+}
+
+void l1_set_adaptation_enabled(L1Core *core, bool enabled) {
+    if (core == NULL) return;
+    core->adaptation_enabled = enabled;
+    core->switches_in_window = 0;
+    core->valid_samples_in_window = 0;
+    core->adaptation_window_started_ms = 0;
+    core->adaptation_window_started = false;
+    core->debounce_extra = 0;
 }
 
 bool l1_policy_valid(const L1Policy *p) {
@@ -109,7 +120,7 @@ L1Action l1_step_at(L1Core *core, L1Observation observation,
         core->candidate_streak = 0;
         return L1_HOLD;
     }
-    if (!core->adaptation_window_started) {
+    if (core->adaptation_enabled && !core->adaptation_window_started) {
         core->adaptation_window_started = true;
         core->adaptation_window_started_ms = monotonic_ms;
     }
@@ -133,10 +144,11 @@ L1Action l1_step_at(L1Core *core, L1Observation observation,
     }
 
     core->decisions++;
-    if (core->valid_samples_in_window < UINT32_MAX) {
+    if (core->adaptation_enabled && core->valid_samples_in_window < UINT32_MAX) {
         core->valid_samples_in_window++;
     }
-    if (core->valid_samples_in_window >= L1_SELF_ADAPT_MIN_SAMPLES &&
+    if (core->adaptation_enabled &&
+        core->valid_samples_in_window >= L1_SELF_ADAPT_MIN_SAMPLES &&
         monotonic_ms - core->adaptation_window_started_ms >=
             L1_SELF_ADAPT_MIN_INTERVAL_MS) {
         /* Both sample and monotonic-time gates must pass. This heuristic reduces

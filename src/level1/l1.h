@@ -43,6 +43,7 @@ typedef struct {
     uint64_t adaptation_window_started_ms;
     uint64_t last_monotonic_ms;
     bool has_previous_policy;
+    bool adaptation_enabled;      /* compiled evaluation control; defaults on */
     bool adaptation_window_started;
     bool monotonic_initialized;
 } L1Core;
@@ -55,6 +56,7 @@ enum {
 
 L1Policy l1_default_policy(void);
 void l1_init(L1Core *core);
+void l1_set_adaptation_enabled(L1Core *core, bool enabled);
 bool l1_policy_valid(const L1Policy *policy);
 bool l1_apply_policy(L1Core *core, const L1Policy *proposal);
 bool l1_rollback_policy(L1Core *core, uint32_t new_generation);
