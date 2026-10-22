@@ -36,3 +36,21 @@ Validation is split deliberately:
 
 Neither benchmark measures resource-management benefit: v0.2 has no actuator
 and makes no resource-control, scheduler, kernel, firmware, or hardware writes.
+
+## Level 1 v0.3 memory stability boundary
+
+The deterministic core receives monotonic time as explicit data; it does not
+read a clock itself. Self-adaptation can change only `debounce_extra` in `0..2`,
+and only after both 600 valid observations and 600,000 elapsed monotonic
+milliseconds. Call frequency therefore cannot accelerate it. Time regression,
+invalid telemetry, update, rollback, and recovery all return or reset to `HOLD`.
+
+Optional local persistence stores only validated policy memory, one rollback
+snapshot, and the bounded debounce increment. It never restores actions,
+candidate streaks, decision counters, or time-window state. Its CRC is corruption
+detection, not authentication. See `L1-v0.3-memory-state.md`.
+
+The v0.3 replay gives the heuristic a labeled synthetic trace and measures
+false responses, oscillation, and detection delay. Better scores on that trace
+are experimental evidence about that heuristic/trace pair—not machine learning,
+general intelligence, workload benefit, or permission to actuate resources.

@@ -38,22 +38,38 @@ typedef struct {
     uint16_t candidate_streak;
     uint8_t debounce_extra;       /* VERY slowly self-adapted: 0..2 */
     uint32_t switches_in_window;
+    uint32_t valid_samples_in_window;
     uint64_t decisions;
+    uint64_t adaptation_window_started_ms;
+    uint64_t last_monotonic_ms;
     bool has_previous_policy;
+    bool adaptation_window_started;
+    bool monotonic_initialized;
 } L1Core;
 
-enum { L1_SELF_ADAPT_WINDOW = 600, L1_MAX_EXTRA_CONFIRMATIONS = 2 };
+enum {
+    L1_SELF_ADAPT_MIN_SAMPLES = 600,
+    L1_SELF_ADAPT_MIN_INTERVAL_MS = 600000,
+    L1_MAX_EXTRA_CONFIRMATIONS = 2
+};
 
 L1Policy l1_default_policy(void);
 void l1_init(L1Core *core);
 bool l1_policy_valid(const L1Policy *policy);
 bool l1_apply_policy(L1Core *core, const L1Policy *proposal);
 bool l1_rollback_policy(L1Core *core, uint32_t new_generation);
-L1Action l1_step(L1Core *core, L1Observation observation);
+L1Action l1_step_at(L1Core *core, L1Observation observation,
+                    uint64_t monotonic_ms);
 const char *l1_action_name(L1Action action);
 
 /* A deliberately strict text-file format for future L2 policy proposals. */
 bool l1_read_policy(const char *path, L1Policy *out, char *error, size_t error_size);
+
+/* Explicit local persistence; CRC32 detects corruption but is not authentication. */
+bool l1_state_save_atomic(const char *path, const L1Core *core,
+                          char *error, size_t error_size);
+bool l1_state_load(const char *path, L1Core *core,
+                   char *error, size_t error_size);
 
 /* Linux PSI adapter is OUTSIDE the deterministic L1 decision core. */
 bool l1_parse_psi_percent(const char *line, const char *category, uint16_t *bp);

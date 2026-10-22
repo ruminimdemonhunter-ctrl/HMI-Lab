@@ -32,8 +32,13 @@ static void reset_runtime_state(L1Core *core) {
     core->candidate_streak = 0;
     core->action = L1_HOLD;
     core->switches_in_window = 0;
+    core->valid_samples_in_window = 0;
     core->debounce_extra = 0;
     core->decisions = 0;
+    core->adaptation_window_started_ms = 0;
+    core->last_monotonic_ms = 0;
+    core->adaptation_window_started = false;
+    core->monotonic_initialized = false;
 }
 
 bool l1_apply_policy(L1Core *core, const L1Policy *proposal) {
@@ -86,14 +91,27 @@ static L1Action choose_action(const L1Core *core, L1Observation o) {
     return L1_HOLD;
 }
 
-L1Action l1_step(L1Core *core, L1Observation observation) {
+L1Action l1_step_at(L1Core *core, L1Observation observation,
+                    uint64_t monotonic_ms) {
     if (core == NULL) return L1_HOLD;
+    if (core->monotonic_initialized &&
+        monotonic_ms < core->last_monotonic_ms) {
+        core->action = core->candidate = L1_HOLD;
+        core->candidate_streak = 0;
+        return L1_HOLD;
+    }
+    core->monotonic_initialized = true;
+    core->last_monotonic_ms = monotonic_ms;
     if (!observation.valid || observation.cpu_some_bp > 10000 ||
         observation.memory_full_bp > 10000 || observation.io_full_bp > 10000) {
         /* No hardware controls, but HOLD on missing/invalid telemetry. */
         core->action = core->candidate = L1_HOLD;
         core->candidate_streak = 0;
         return L1_HOLD;
+    }
+    if (!core->adaptation_window_started) {
+        core->adaptation_window_started = true;
+        core->adaptation_window_started_ms = monotonic_ms;
     }
     L1Action requested = choose_action(core, observation);
     if (requested == core->action) {
@@ -115,9 +133,14 @@ L1Action l1_step(L1Core *core, L1Observation observation) {
     }
 
     core->decisions++;
-    if (core->decisions % L1_SELF_ADAPT_WINDOW == 0) {
-        /* Slow, constrained self-change: only debounce behavior, not safety bounds.
-           This heuristic reduces flapping; it is NOT proof of better scheduling. */
+    if (core->valid_samples_in_window < UINT32_MAX) {
+        core->valid_samples_in_window++;
+    }
+    if (core->valid_samples_in_window >= L1_SELF_ADAPT_MIN_SAMPLES &&
+        monotonic_ms - core->adaptation_window_started_ms >=
+            L1_SELF_ADAPT_MIN_INTERVAL_MS) {
+        /* Both sample and monotonic-time gates must pass. This heuristic reduces
+           flapping; it is NOT proof of learned scheduling improvement. */
         if (core->switches_in_window >= 8 &&
             core->debounce_extra < L1_MAX_EXTRA_CONFIRMATIONS) {
             core->debounce_extra++;
@@ -125,6 +148,8 @@ L1Action l1_step(L1Core *core, L1Observation observation) {
             core->debounce_extra--;
         }
         core->switches_in_window = 0;
+        core->valid_samples_in_window = 0;
+        core->adaptation_window_started_ms = monotonic_ms;
     }
     return core->action;
 }

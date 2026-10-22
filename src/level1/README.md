@@ -1,4 +1,4 @@
-# HMI Lab | Level 1 v0.2 (C11)
+# HMI Lab | Level 1 v0.3 (C11)
 
 **First working implementation — observe / decide / recommend ONLY.**
 It does not alter process priorities, cgroups, CPU registers, RAM, kernel state,
@@ -18,8 +18,8 @@ baseline with a tiny memory-parametrized adaptive controller.
 ```powershell
 cd C:\Dev\Projects\HMI-Lab
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync-source.ps1
-ssh -p 2222 lab@127.0.0.1 "cd /home/lab/hmi/src/level1 && make clean all test bench"
-ssh -p 2222 lab@127.0.0.1 "cd /home/lab/hmi/src/level1 && ./l1_monitor --samples 8 --interval-ms 1000 --policy policy.example"
+ssh -p 2222 lab@127.0.0.1 "cd /home/lab/hmi/src/level1 && make clean all test replay bench"
+ssh -p 2222 lab@127.0.0.1 "mkdir -p /home/lab/hmi/state && cd /home/lab/hmi/src/level1 && ./l1_monitor --samples 8 --interval-ms 1000 --policy policy.example --state /home/lab/hmi/state/l1.l1state"
 ```
 
 The CLI samples `/proc/pressure/cpu` **some** and `/proc/pressure/memory`
@@ -39,7 +39,8 @@ Recommendations do **nothing** to the OS in this release.
 ## Memory-driven behavior / safe policy proposal
 
 `L1Core` contains a compact `L1Policy` (behavior memory) and bounded working
-state. `l1_step()` has no kernel interfaces and performs no allocations.
+state. `l1_step_at()` has no kernel interfaces and performs no allocations; its
+caller supplies monotonic milliseconds as explicit deterministic input.
 An L2-style actor may propose **only** a new policy file in the guest; the L1
 process parses the complete candidate and calls `l1_apply_policy()` only if:
 
@@ -53,12 +54,11 @@ process parses the complete candidate and calls `l1_apply_policy()` only if:
 The core also retains one prior validated policy. `l1_rollback_policy()` can
 restore its behavior only under a caller-supplied generation greater than the
 active generation. Rollback therefore does not weaken replay protection and,
-like an ordinary update, resets the recommendation to `HOLD`. The snapshot is
-process-local and is lost at restart.
+like an ordinary update, resets the recommendation to `HOLD`.
 
 This is a *prototype policy contract*, **not** an authenticated L2 security
 boundary. Future L2 integration will require access controls, authenticated
-origin, persistence, auditing and rollback policies. L2 cannot recompile or
+origin, authorization, auditing and deeper rollback policies. L2 cannot recompile or
 change L1's immutable safety rules *through this contract*.
 
 The policy file is checked every 5 observation cycles (not at microsecond
@@ -88,18 +88,37 @@ policy path is deliberately **outside** `src/` because sync replaces `src/`.
 ## Restricted self-adaptation
 
 L1 self-modifies just one bounded behavior parameter, `debounce_extra`, in
-range **0..2**. After each **600 valid observations**, it can change by **at
-most one step**: a window with >=8 confirmed recommendation switches adds
-an extra confirmation; a completely stable window reduces one extra
-confirmation. At the 1000 ms default sample interval, that is approximately
-10 minutes between any adjustments. This is a conservative anti-flapping
+range **0..2**. An adjustment requires both **600 valid observations** and
+**600,000 elapsed monotonic milliseconds**, then changes by at most one step:
+a window with >=8 confirmed recommendation switches adds an extra confirmation;
+a completely stable window removes one. Rapid calls cannot accelerate this.
+Missing telemetry or regressing time fails to `HOLD`. This conservative anti-flapping
 heuristic — it does not imply that L1 has learned an optimal scheduling policy.
+
+## Versioned local state
+
+`--state FILE` opts into persistence of the validated active policy, one prior
+policy, and `debounce_extra`. The 64-byte versioned file has a CRC32 and strict
+reserved fields. Saving uses a mode-0600 same-directory temporary file, file
+`fsync`, atomic rename, and parent-directory `fsync`. Loading any invalid state
+recovers compiled defaults and `HOLD`. Actions, timestamps, candidates, and
+counters never persist, so restart cannot shortcut the time gate.
+
+This local file is the only new write and is behavior-memory durability—not an
+OS/resource control. CRC32 is not authentication. Keep the state outside the
+disposable synchronized `src/` tree. See `docs/L1-v0.3-memory-state.md`.
 
 ## Acceptance tests and benchmarks
 
 - `make test` — exact synthetic CPU/memory/I/O decision traces plus policy
   parsing, versions, rejection/state preservation, fallback, rollback, bounded
-  adaptation, hysteresis, priority, and PSI parser tests.
+  time-gated adaptation, state integrity/recovery, benchmark argument limits,
+  hysteresis, priority, and PSI parser tests.
+- `make test-ndebug` — rebuild and rerun checks with `-DNDEBUG`.
+- `make sanitize` — ASan/UBSan/leak-enabled test build.
+- `make replay` — five independent deterministic fixed-memory/adaptive
+  experiments measuring false responses, misses, oscillation, detection delay,
+  core size, process RSS, and CPU cost.
 - `make bench` — five independent repetitions for fixed-rule and L1 engines.
   `core` runs isolate nanosecond decision cost. `live` runs include all three
   `/proc/pressure` reads and parsing through the decision, and report wall time,
@@ -122,12 +141,17 @@ l1.h             Fixed memory/policy/observation interface
 l1_core.c        Deterministic memory-based decision engine + slow self-change
 l1_linux.c       Read-only Linux PSI adapter
 l1_policy.c      Strict L2-style behavior-memory proposal parser
-l1_main.c        Low-overhead monitoring and safe policy-reload loop
+l1_state.c       Versioned CRC state, atomic persistence and safe recovery
+l1_main.c        Monitor, monotonic clock adapter, policy/state loop
 l1_test.c        Policy, fallback, adaptation, parser and rollback tests
 l1_trace_test.c  Synthetic traces with known per-sample decisions
+l1_state_test.c  Persistence corruption/recovery/permission tests
 l1_bench.c       Fixed-vs-L1 core and observation-to-decision benchmark
+l1_replay.c      Labeled fixed-memory vs bounded-adaptive experiment
+benchmark_args_test.sh  Benchmark CLI negative tests
 run_benchmarks.sh Repeated guest benchmark command
+run_replays.sh   Repeated deterministic replay command
 policy.example   Valid initial policy proposal
 policy.invalid.example  Negative policy test fixture
-Makefile         Build/test/benchmark
+Makefile         Build/test/sanitize/replay/benchmark
 ```
