@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
     }
     L1Core core;
     l1_init(&core);
-    fprintf(stderr, "HMI L1 v0.1: READ-ONLY advisory mode; no hardware / OS writes\n");
+    fprintf(stderr, "HMI L1 v0.2: READ-ONLY advisory mode; no hardware / OS writes\n");
     for (unsigned long i = 0; samples == 0 || i < samples; ++i) {
         /* A file is only an L2-style memory proposal, not directly writable core memory.
            For live use L2 must publish a complete file via atomic rename. */

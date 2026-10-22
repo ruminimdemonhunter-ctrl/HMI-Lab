@@ -9,6 +9,7 @@
 # Compiled binaries
 /src/level1/l1_monitor
 /src/level1/l1_test
+/src/level1/l1_trace_test
 /src/level1/l1_bench
 *.o
 *.obj

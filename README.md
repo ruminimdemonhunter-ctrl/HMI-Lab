@@ -2,7 +2,11 @@
 
 This workspace is a **safe-ish VM lab**, not a host OS modification project. The host is Windows; the guest is minimal Debian Linux. Source code lives only in Windows and is sent one way into the VM via loopback SSH.
 
-**Status: Foundation only.** No level-1 machine intelligence is implemented yet.
+**Status: Level 1 v0.2 research prototype.** A native C11, read-only pressure
+observer and bounded recommendation engine now lives in `src/level1`. It has no
+actuator and makes no resource-control changes. See
+`docs/L1-v0.2-validation.md` for its audit, tests, benchmark method, results,
+and limitations.
 
 ## Prerequisites
 
@@ -102,8 +106,10 @@ Backups are placed in `vm/backups/` and **not** in Git. QEMU's disk-image toolin
 - QEMU is security-sensitive software; use trusted installers, OS images, and updates. Virtualization greatly reduces accidental host-OS risk but does not guarantee perfect containment.
 - Don't start two QEMU processes with the same writable disk image.
 
-## Next phase
+## Current research phase
 
-Discuss and define Level 1: measurable signals, allowed simulated actuators, hard constraints, update cadence, baseline policies, acceptance tests. No automatic scheduling changes in this foundation.
+Validate Level 1 decisions and observer overhead before discussing any
+actuator. No automatic scheduling changes are present or authorized.
 
-See `docs/architecture.md` and `docs/level1-questions.md`.
+See `docs/architecture.md`, `docs/L1-v0.2-validation.md`, and
+`docs/level1-questions.md`.
