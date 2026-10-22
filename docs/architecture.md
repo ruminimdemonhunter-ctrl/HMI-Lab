@@ -74,3 +74,24 @@ on the declared loss, and adaptation regressed the high-priority memory metric.
 The preregistered outcome is therefore no-go for actuation. See
 L1-v0.4-evaluation-plan.md and L1-v0.4-validation.md. This result adds no
 scheduler, cgroup, kernel, device, network update, or hardware authority.
+
+## Level 1 v0.5 risk-aware memory boundary
+
+V0.5 replaces production-default global debounce adaptation with independently
+bounded CPU and I/O extras. Memory escalation uses a separate confirmation
+streak and exactly the tuned fixed policy's base confirmation count, so
+adaptive state cannot add memory-protection entry delay. Each extra remains in
+`0..2` and can change by only one after both 600 valid observations and 600,000
+monotonic milliseconds. The compiled memory > I/O > CPU > HOLD priority is
+unchanged.
+
+Persistent behavior memory is now explicit version 2. A validated version-1
+file migrates policy and rollback memory only; its global adaptive extra is
+discarded instead of being silently reinterpreted. Runtime actions, timing,
+counters, and partial confirmations remain nonpersistent.
+
+The preregistered held-out result is again no-go. V0.5 matched tuned fixed on
+all paired memory-event delays and improved on V0.4 global loss, but regressed
+I/O misses and total loss relative to tuned fixed. See
+`L1-v0.5-evaluation-plan.md` and `L1-v0.5-validation.md`. This is bounded
+heuristic adaptation, not online learning or evidence of general intelligence.

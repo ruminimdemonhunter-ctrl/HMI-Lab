@@ -18,16 +18,43 @@ void l1_init(L1Core *core) {
     core->action = L1_HOLD;
     core->candidate = L1_HOLD;
     core->adaptation_enabled = true;
+    core->adaptation_mode = L1_ADAPT_RISK_AWARE;
 }
 
-void l1_set_adaptation_enabled(L1Core *core, bool enabled) {
-    if (core == NULL) return;
-    core->adaptation_enabled = enabled;
+static void reset_adaptation_state(L1Core *core) {
     core->switches_in_window = 0;
+    core->cpu_switches_in_window = 0;
+    core->io_switches_in_window = 0;
     core->valid_samples_in_window = 0;
     core->adaptation_window_started_ms = 0;
     core->adaptation_window_started = false;
     core->debounce_extra = 0;
+    core->cpu_debounce_extra = 0;
+    core->io_debounce_extra = 0;
+}
+
+bool l1_set_adaptation_mode(L1Core *core, L1AdaptationMode mode) {
+    if (core == NULL || mode < L1_ADAPT_DISABLED ||
+        mode > L1_ADAPT_RISK_AWARE) {
+        return false;
+    }
+    core->adaptation_mode = mode;
+    core->adaptation_enabled = mode != L1_ADAPT_DISABLED;
+    core->action = L1_HOLD;
+    core->candidate = L1_HOLD;
+    core->candidate_streak = 0;
+    core->memory_candidate_streak = 0;
+    core->decisions = 0;
+    core->last_monotonic_ms = 0;
+    core->monotonic_initialized = false;
+    reset_adaptation_state(core);
+    return true;
+}
+
+void l1_set_adaptation_enabled(L1Core *core, bool enabled) {
+    if (core == NULL) return;
+    (void)l1_set_adaptation_mode(
+        core, enabled ? L1_ADAPT_LEGACY_GLOBAL : L1_ADAPT_DISABLED);
 }
 
 bool l1_policy_valid(const L1Policy *p) {
@@ -41,10 +68,15 @@ bool l1_policy_valid(const L1Policy *p) {
 static void reset_runtime_state(L1Core *core) {
     core->candidate = L1_HOLD;
     core->candidate_streak = 0;
+    core->memory_candidate_streak = 0;
     core->action = L1_HOLD;
     core->switches_in_window = 0;
+    core->cpu_switches_in_window = 0;
+    core->io_switches_in_window = 0;
     core->valid_samples_in_window = 0;
     core->debounce_extra = 0;
+    core->cpu_debounce_extra = 0;
+    core->io_debounce_extra = 0;
     core->decisions = 0;
     core->adaptation_window_started_ms = 0;
     core->last_monotonic_ms = 0;
@@ -102,6 +134,55 @@ static L1Action choose_action(const L1Core *core, L1Observation o) {
     return L1_HOLD;
 }
 
+static uint16_t required_confirmations(const L1Core *core,
+                                       L1Action requested) {
+    uint8_t extra = 0;
+    if (core->adaptation_mode == L1_ADAPT_LEGACY_GLOBAL) {
+        extra = core->debounce_extra;
+    } else if (core->adaptation_mode == L1_ADAPT_RISK_AWARE) {
+        if (requested == L1_PREFER_INTERACTIVE ||
+            (requested == L1_HOLD &&
+             core->action == L1_PREFER_INTERACTIVE)) {
+            extra = core->cpu_debounce_extra;
+        } else if (requested == L1_DEFER_IO ||
+                   (requested == L1_HOLD &&
+                    core->action == L1_DEFER_IO)) {
+            extra = core->io_debounce_extra;
+        }
+    }
+    return (uint16_t)(core->policy.confirmation_samples + extra);
+}
+
+static void record_confirmed_switch(L1Core *core, L1Action previous,
+                                    L1Action current) {
+    if (core->adaptation_mode == L1_ADAPT_LEGACY_GLOBAL) {
+        if (core->switches_in_window < UINT32_MAX)
+            core->switches_in_window++;
+        return;
+    }
+    if (core->adaptation_mode != L1_ADAPT_RISK_AWARE ||
+        previous == L1_PROTECT_MEMORY || current == L1_PROTECT_MEMORY) {
+        return;
+    }
+    if ((previous == L1_PREFER_INTERACTIVE ||
+         current == L1_PREFER_INTERACTIVE) &&
+        core->cpu_switches_in_window < UINT32_MAX) {
+        core->cpu_switches_in_window++;
+    }
+    if ((previous == L1_DEFER_IO || current == L1_DEFER_IO) &&
+        core->io_switches_in_window < UINT32_MAX) {
+        core->io_switches_in_window++;
+    }
+}
+
+static void adjust_extra(uint8_t *extra, uint32_t switches) {
+    if (switches >= 8 && *extra < L1_MAX_EXTRA_CONFIRMATIONS) {
+        (*extra)++;
+    } else if (switches == 0 && *extra > 0) {
+        (*extra)--;
+    }
+}
+
 L1Action l1_step_at(L1Core *core, L1Observation observation,
                     uint64_t monotonic_ms) {
     if (core == NULL) return L1_HOLD;
@@ -109,6 +190,7 @@ L1Action l1_step_at(L1Core *core, L1Observation observation,
         monotonic_ms < core->last_monotonic_ms) {
         core->action = core->candidate = L1_HOLD;
         core->candidate_streak = 0;
+        core->memory_candidate_streak = 0;
         return L1_HOLD;
     }
     core->monotonic_initialized = true;
@@ -118,6 +200,7 @@ L1Action l1_step_at(L1Core *core, L1Observation observation,
         /* No hardware controls, but HOLD on missing/invalid telemetry. */
         core->action = core->candidate = L1_HOLD;
         core->candidate_streak = 0;
+        core->memory_candidate_streak = 0;
         return L1_HOLD;
     }
     if (core->adaptation_enabled && !core->adaptation_window_started) {
@@ -125,21 +208,39 @@ L1Action l1_step_at(L1Core *core, L1Observation observation,
         core->adaptation_window_started_ms = monotonic_ms;
     }
     L1Action requested = choose_action(core, observation);
-    if (requested == core->action) {
+    if (core->adaptation_mode == L1_ADAPT_RISK_AWARE &&
+        requested == L1_PROTECT_MEMORY &&
+        core->action != L1_PROTECT_MEMORY) {
+        L1Action previous = core->action;
+        /* Memory confirmation is independent. Do not retain partial lower-
+           priority confirmation across a memory-urgency interval. */
+        core->candidate = L1_HOLD;
+        core->candidate_streak = 0;
+        if (core->memory_candidate_streak < UINT16_MAX)
+            core->memory_candidate_streak++;
+        if (core->memory_candidate_streak >=
+            core->policy.confirmation_samples) {
+            core->action = L1_PROTECT_MEMORY;
+            core->memory_candidate_streak = 0;
+            record_confirmed_switch(core, previous, core->action);
+        }
+    } else if (requested == core->action) {
+        core->memory_candidate_streak = 0;
         core->candidate = requested;
         core->candidate_streak = 0;
     } else {
+        L1Action previous = core->action;
+        core->memory_candidate_streak = 0;
         if (requested != core->candidate) {
             core->candidate = requested;
             core->candidate_streak = 1;
         } else if (core->candidate_streak < UINT16_MAX) {
             core->candidate_streak++;
         }
-        if (core->candidate_streak >=
-            (uint16_t)(core->policy.confirmation_samples + core->debounce_extra)) {
+        if (core->candidate_streak >= required_confirmations(core, requested)) {
             core->action = requested;
             core->candidate_streak = 0;
-            core->switches_in_window++;
+            record_confirmed_switch(core, previous, core->action);
         }
     }
 
@@ -153,13 +254,17 @@ L1Action l1_step_at(L1Core *core, L1Observation observation,
             L1_SELF_ADAPT_MIN_INTERVAL_MS) {
         /* Both sample and monotonic-time gates must pass. This heuristic reduces
            flapping; it is NOT proof of learned scheduling improvement. */
-        if (core->switches_in_window >= 8 &&
-            core->debounce_extra < L1_MAX_EXTRA_CONFIRMATIONS) {
-            core->debounce_extra++;
-        } else if (core->switches_in_window == 0 && core->debounce_extra > 0) {
-            core->debounce_extra--;
+        if (core->adaptation_mode == L1_ADAPT_LEGACY_GLOBAL) {
+            adjust_extra(&core->debounce_extra, core->switches_in_window);
+        } else if (core->adaptation_mode == L1_ADAPT_RISK_AWARE) {
+            adjust_extra(&core->cpu_debounce_extra,
+                         core->cpu_switches_in_window);
+            adjust_extra(&core->io_debounce_extra,
+                         core->io_switches_in_window);
         }
         core->switches_in_window = 0;
+        core->cpu_switches_in_window = 0;
+        core->io_switches_in_window = 0;
         core->valid_samples_in_window = 0;
         core->adaptation_window_started_ms = monotonic_ms;
     }

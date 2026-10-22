@@ -8,8 +8,15 @@
 #include <string.h>
 #include <unistd.h>
 
-enum { STATE_SIZE = 64, STATE_CRC_OFFSET = 60, STATE_FORMAT_VERSION = 1 };
-static const unsigned char state_magic[8] = {'H','M','I','L','1','S','1','\0'};
+enum {
+    V1_STATE_SIZE = 64,
+    V1_CRC_OFFSET = 60,
+    V2_STATE_SIZE = 72,
+    V2_CRC_OFFSET = 68,
+    V2_FORMAT_VERSION = 2
+};
+static const unsigned char v1_magic[8] = {'H','M','I','L','1','S','1','\0'};
+static const unsigned char v2_magic[8] = {'H','M','I','L','1','S','2','\0'};
 
 static void set_error(char *error, size_t size, const char *message) {
     if (error != NULL && size != 0) snprintf(error, size, "%s", message);
@@ -112,22 +119,24 @@ bool l1_state_save_atomic(const char *path, const L1Core *core,
                           char *error, size_t error_size) {
     if (path == NULL || *path == '\0' || core == NULL ||
         !policy_is_storable(&core->policy) ||
-        core->debounce_extra > L1_MAX_EXTRA_CONFIRMATIONS ||
+        core->cpu_debounce_extra > L1_MAX_EXTRA_CONFIRMATIONS ||
+        core->io_debounce_extra > L1_MAX_EXTRA_CONFIRMATIONS ||
         (core->has_previous_policy &&
          (!policy_is_storable(&core->previous_policy) ||
           core->previous_policy.generation >= core->policy.generation))) {
         set_error(error, error_size, "state violates compiled safety envelope");
         return false;
     }
-    unsigned char data[STATE_SIZE] = {0};
-    memcpy(data, state_magic, sizeof(state_magic));
-    put_u32(data + 8, STATE_FORMAT_VERSION);
-    put_u32(data + 12, STATE_SIZE);
+    unsigned char data[V2_STATE_SIZE] = {0};
+    memcpy(data, v2_magic, sizeof(v2_magic));
+    put_u32(data + 8, V2_FORMAT_VERSION);
+    put_u32(data + 12, V2_STATE_SIZE);
     encode_policy(data, 16, &core->policy);
-    data[31] = core->debounce_extra;
-    data[32] = core->has_previous_policy ? 1U : 0U;
-    if (core->has_previous_policy) encode_policy(data, 36, &core->previous_policy);
-    put_u32(data + STATE_CRC_OFFSET, crc32_bytes(data, STATE_CRC_OFFSET));
+    data[31] = core->cpu_debounce_extra;
+    data[32] = core->io_debounce_extra;
+    data[33] = core->has_previous_policy ? 1U : 0U;
+    if (core->has_previous_policy) encode_policy(data, 40, &core->previous_policy);
+    put_u32(data + V2_CRC_OFFSET, crc32_bytes(data, V2_CRC_OFFSET));
 
     size_t path_length = strlen(path);
     if (path_length > SIZE_MAX - 12U) {
@@ -171,35 +180,49 @@ bool l1_state_load(const char *path, L1Core *core,
         set_error(error, error_size, "cannot open state file");
         return false;
     }
-    unsigned char data[STATE_SIZE + 1U];
+    unsigned char data[V2_STATE_SIZE + 1U];
     size_t count = fread(data, 1, sizeof(data), file);
-    bool read_ok = !ferror(file) && fclose(file) == 0;
-    if (!read_ok || count != STATE_SIZE ||
-        memcmp(data, state_magic, sizeof(state_magic)) != 0 ||
-        get_u32(data + 8) != STATE_FORMAT_VERSION ||
-        get_u32(data + 12) != STATE_SIZE ||
-        get_u32(data + STATE_CRC_OFFSET) !=
-            crc32_bytes(data, STATE_CRC_OFFSET)) {
+    bool read_ok = !ferror(file);
+    /* Always close the file, including when fread() reported an error. */
+    if (fclose(file) != 0) read_ok = false;
+    bool is_v1 = read_ok && count == V1_STATE_SIZE &&
+        memcmp(data, v1_magic, sizeof(v1_magic)) == 0 &&
+        get_u32(data + 8) == 1 && get_u32(data + 12) == V1_STATE_SIZE &&
+        get_u32(data + V1_CRC_OFFSET) == crc32_bytes(data, V1_CRC_OFFSET);
+    bool is_v2 = read_ok && count == V2_STATE_SIZE &&
+        memcmp(data, v2_magic, sizeof(v2_magic)) == 0 &&
+        get_u32(data + 8) == V2_FORMAT_VERSION &&
+        get_u32(data + 12) == V2_STATE_SIZE &&
+        get_u32(data + V2_CRC_OFFSET) == crc32_bytes(data, V2_CRC_OFFSET);
+    if (!is_v1 && !is_v2) {
         set_error(error, error_size, "invalid version, size, or integrity check");
         return false;
     }
-    for (size_t i = 33; i < 36; ++i) {
-        if (data[i] != 0) {
-            set_error(error, error_size, "nonzero reserved state field");
-            return false;
-        }
-    }
-    for (size_t i = 51; i < STATE_CRC_OFFSET; ++i) {
-        if (data[i] != 0) {
-            set_error(error, error_size, "nonzero reserved state field");
-            return false;
-        }
-    }
     L1Policy active = decode_policy(data, 16);
-    L1Policy previous = decode_policy(data, 36);
-    bool has_previous = data[32] == 1U;
-    if (data[32] > 1U || !policy_is_storable(&active) ||
-        data[31] > L1_MAX_EXTRA_CONFIRMATIONS ||
+    size_t previous_offset = is_v1 ? 36U : 40U;
+    size_t reserved_start = is_v1 ? 33U : 34U;
+    size_t reserved_middle_end = is_v1 ? 36U : 40U;
+    size_t reserved_tail_start = is_v1 ? 51U : 55U;
+    size_t crc_offset = is_v1 ? V1_CRC_OFFSET : V2_CRC_OFFSET;
+    unsigned has_previous_byte = data[is_v1 ? 32U : 33U];
+    L1Policy previous = decode_policy(data, previous_offset);
+    bool has_previous = has_previous_byte == 1U;
+    for (size_t i = reserved_start; i < reserved_middle_end; ++i) {
+        if (data[i] != 0) {
+            set_error(error, error_size, "nonzero reserved state field");
+            return false;
+        }
+    }
+    for (size_t i = reserved_tail_start; i < crc_offset; ++i) {
+        if (data[i] != 0) {
+            set_error(error, error_size, "nonzero reserved state field");
+            return false;
+        }
+    }
+    if (has_previous_byte > 1U || !policy_is_storable(&active) ||
+        (is_v1 && data[31] > L1_MAX_EXTRA_CONFIRMATIONS) ||
+        (is_v2 && (data[31] > L1_MAX_EXTRA_CONFIRMATIONS ||
+                   data[32] > L1_MAX_EXTRA_CONFIRMATIONS)) ||
         (has_previous &&
          (!policy_is_storable(&previous) ||
           previous.generation >= active.generation))) {
@@ -207,7 +230,7 @@ bool l1_state_load(const char *path, L1Core *core,
         return false;
     }
     if (!has_previous) {
-        for (size_t i = 36; i < 51; ++i) {
+        for (size_t i = previous_offset; i < previous_offset + 15U; ++i) {
             if (data[i] != 0) {
                 set_error(error, error_size, "unexpected previous policy data");
                 return false;
@@ -217,6 +240,9 @@ bool l1_state_load(const char *path, L1Core *core,
     core->policy = active;
     core->previous_policy = previous;
     core->has_previous_policy = has_previous;
-    core->debounce_extra = data[31];
+    if (is_v2) {
+        core->cpu_debounce_extra = data[31];
+        core->io_debounce_extra = data[32];
+    }
     return true;
 }

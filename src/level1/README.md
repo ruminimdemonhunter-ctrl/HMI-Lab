@@ -1,4 +1,4 @@
-# HMI Lab | Level 1 v0.4 (C11)
+# HMI Lab | Level 1 v0.5 (C11)
 
 **First working implementation — observe / decide / recommend ONLY.**
 It does not alter process priorities, cgroups, CPU registers, RAM, kernel state,
@@ -87,19 +87,24 @@ policy path is deliberately **outside** `src/` because sync replaces `src/`.
 
 ## Restricted self-adaptation
 
-L1 self-modifies just one bounded behavior parameter, `debounce_extra`, in
-range **0..2**. An adjustment requires both **600 valid observations** and
-**600,000 elapsed monotonic milliseconds**, then changes by at most one step:
-a window with >=8 confirmed recommendation switches adds an extra confirmation;
-a completely stable window removes one. Rapid calls cannot accelerate this.
-Missing telemetry or regressing time fails to `HOLD`. This conservative anti-flapping
-heuristic — it does not imply that L1 has learned an optimal scheduling policy.
+V0.5 maintains independent CPU and I/O confirmation extras, each in **0..2**.
+Memory escalation has an independent streak and always uses the validated
+policy's base confirmation count: adaptation cannot add memory-entry delay.
+An adjustment requires both **600 valid observations** and **600,000 elapsed
+monotonic milliseconds**, then changes by at most one step. Rapid calls cannot
+accelerate it. Missing telemetry or regressing time fails to `HOLD`.
+
+The V0.4 global heuristic remains compiled only as a reproducible research
+comparator. This is bounded anti-flapping logic, not online ground-truth
+learning or evidence that L1 has learned an optimal resource policy.
 
 ## Versioned local state
 
 `--state FILE` opts into persistence of the validated active policy, one prior
-policy, and `debounce_extra`. The 64-byte versioned file has a CRC32 and strict
-reserved fields. Saving uses a mode-0600 same-directory temporary file, file
+policy, and the CPU/I/O extras. The 72-byte v2 file has a CRC32 and strict
+reserved fields. A fully validated 64-byte v1 file migrates policy and rollback
+memory, discards its global extra, and starts both V0.5 extras at zero. Saving
+uses a mode-0600 same-directory temporary file, file
 `fsync`, atomic rename, and parent-directory `fsync`. Loading any invalid state
 recovers compiled defaults and `HOLD`. Actions, timestamps, candidates, and
 counters never persist, so restart cannot shortcut the time gate.
@@ -132,7 +137,11 @@ disposable synchronized `src/` tree. See `docs/L1-v0.3-memory-state.md`.
 - `make evaluation-heldout EVAL_POLICY=/tmp/l1-v04-tuned.eval.policy EVAL_REPETITIONS=100`
   — compare frozen default, tuned fixed, and bounded adaptive through the real
   core on the frozen held-out split.
-- Observe `memory_gen` and `self_extra` in `l1_monitor` output.
+- `make evaluation-v05-ci` — bounded V0.5 development, training, manifest
+  identity, and held-out smoke test.
+- `make evaluation-v05-heldout EVAL_REPETITIONS=100` — preregistered V0.5
+  four-controller held-out comparison.
+- Observe `memory_gen`, `cpu_extra`, and `io_extra` in `l1_monitor` output.
 - Program must run as `lab`, without `sudo`.
 
 **Important:** the live benchmark measures observer/controller overhead, not
@@ -141,10 +150,11 @@ load can vary, so compare repeated distributions rather than one run. Peak RSS
 has page-sized resolution and includes the whole process. To prove benefits we
 still need controlled workloads, independent outcomes, and net cost accounting.
 
-The preregistered v0.4 held-out experiment was a negative result: tuned fixed
-memory outperformed bounded adaptation, and adaptation regressed memory-event
-misses and maximum detection delay. It is explicitly a no-go for actuation.
-See `docs/L1-v0.4-evaluation-plan.md` and `docs/L1-v0.4-validation.md`.
+The preregistered V0.5 held-out experiment was also a negative result.
+Risk-aware adaptation eliminated extra memory delay and improved on V0.4 global
+adaptation, but regressed I/O misses and total loss versus tuned fixed. It is
+explicitly a no-go for actuation. See `docs/L1-v0.5-evaluation-plan.md` and
+`docs/L1-v0.5-validation.md`.
 
 ## Components
 
@@ -161,8 +171,11 @@ l1_state_test.c  Persistence corruption/recovery/permission tests
 l1_bench.c       Fixed-vs-L1 core and observation-to-decision benchmark
 l1_replay.c      Labeled fixed-memory vs bounded-adaptive experiment
 evaluation/l1_evaluate.c  Seeded train/held-out three-controller evaluator
+evaluation/l1_evaluate_v05.c  Frozen four-controller risk-aware evaluator
 evaluation/run_ci.sh  Bounded CI evaluation command
+evaluation/run_ci_v05.sh  Bounded V0.5 CI evaluation command
 evaluation_args_test.sh  Evaluator CLI, checksum, and training-selection tests
+evaluation_v05_args_test.sh  V0.5 checksum and manifest-identity tests
 benchmark_args_test.sh  Benchmark CLI negative tests
 run_benchmarks.sh Repeated guest benchmark command
 run_replays.sh   Repeated deterministic replay command

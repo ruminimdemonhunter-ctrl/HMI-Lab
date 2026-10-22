@@ -42,6 +42,8 @@ static L1Action expected_action(size_t sample) {
 static unsigned run_replay(bool adaptive, ReplayMetrics *metrics) {
     L1Core core;
     l1_init(&core);
+    (void)l1_set_adaptation_mode(
+        &core, adaptive ? L1_ADAPT_LEGACY_GLOBAL : L1_ADAPT_DISABLED);
     memset(metrics, 0, sizeof(*metrics));
     L1Action previous_actual = L1_HOLD;
     L1Action previous_expected = L1_HOLD;

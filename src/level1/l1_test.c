@@ -108,9 +108,12 @@ static void test_versioned_rollback(void) {
     for (int i = 0; i < 3; ++i) l1_step(&c, observe(6000, 0, 0));
     assert(c.action == L1_PREFER_INTERACTIVE);
     assert(!l1_rollback_policy(&c, 2));
+    c.cpu_debounce_extra = 2;
+    c.io_debounce_extra = 1;
     assert(l1_rollback_policy(&c, 3));
     assert(c.policy.generation == 3 && c.policy.cpu_trigger_bp == 2000);
     assert(c.action == L1_HOLD && c.decisions == 0);
+    assert(c.cpu_debounce_extra == 0 && c.io_debounce_extra == 0);
     assert(!l1_apply_policy(&c, &second));
     assert(l1_rollback_policy(&c, 4));
     assert(c.policy.generation == 4 && c.policy.cpu_trigger_bp == 5000);
@@ -118,6 +121,7 @@ static void test_versioned_rollback(void) {
 
 static void test_bounded_slow_adaptation(void) {
     L1Core fast; l1_init(&fast);
+    assert(l1_set_adaptation_mode(&fast, L1_ADAPT_LEGACY_GLOBAL));
     for (int i = 0; i < 10000; ++i) {
         bool high = (i / 8) % 2 == 0;
         (void)l1_step_at(&fast, observe(high ? 5000 : 0, 0, 0), 0);
@@ -135,6 +139,7 @@ static void test_bounded_slow_adaptation(void) {
     assert(fast.decisions == decisions); /* Regressing time fails closed. */
 
     L1Core c; l1_init(&c);
+    assert(l1_set_adaptation_mode(&c, L1_ADAPT_LEGACY_GLOBAL));
     for (uint64_t i = 0; i <= 1800; ++i) {
         bool high = (i / 8U) % 2U == 0;
         (void)l1_step_at(&c, observe(high ? 5000 : 0, 0, 0), i * 1000U);
@@ -152,6 +157,7 @@ static void test_bounded_slow_adaptation(void) {
 static void test_adaptation_evaluation_control(void) {
     L1Core c; l1_init(&c);
     assert(c.adaptation_enabled);
+    assert(c.adaptation_mode == L1_ADAPT_RISK_AWARE);
     l1_set_adaptation_enabled(&c, false);
     assert(!c.adaptation_enabled);
     for (uint64_t i = 0; i <= 1800; ++i) {
@@ -168,8 +174,74 @@ static void test_adaptation_evaluation_control(void) {
 
     l1_set_adaptation_enabled(&c, true);
     assert(c.adaptation_enabled);
+    assert(c.adaptation_mode == L1_ADAPT_LEGACY_GLOBAL);
     assert(c.debounce_extra == 0);
+    L1Core before = c;
+    assert(!l1_set_adaptation_mode(&c, (L1AdaptationMode)99));
+    assert(memcmp(&before, &c, sizeof(c)) == 0);
+    assert(l1_set_adaptation_mode(&c, L1_ADAPT_RISK_AWARE));
     l1_set_adaptation_enabled(NULL, false);
+}
+
+static void test_risk_aware_memory_urgency(void) {
+    L1Core c; l1_init(&c);
+    L1Policy policy = l1_default_policy();
+    policy.generation = 1;
+    policy.confirmation_samples = 2;
+    assert(l1_apply_policy(&c, &policy));
+    c.cpu_debounce_extra = 2;
+    c.io_debounce_extra = 2;
+
+    assert(l1_step_at(&c, observe(5000, 0, 0), 0) == L1_HOLD);
+    assert(c.candidate == L1_PREFER_INTERACTIVE);
+    assert(l1_step_at(&c, observe(5000, 200, 900), 1000) == L1_HOLD);
+    assert(c.memory_candidate_streak == 1);
+    assert(l1_step_at(&c, observe(5000, 200, 900), 2000) ==
+           L1_PROTECT_MEMORY);
+    assert(c.memory_candidate_streak == 0);
+    assert(c.cpu_switches_in_window == 0);
+    assert(c.io_switches_in_window == 0);
+
+    L1Core invalid; l1_init(&invalid);
+    assert(l1_apply_policy(&invalid, &policy));
+    assert(l1_step_at(&invalid, observe(0, 200, 0), 0) == L1_HOLD);
+    assert(invalid.memory_candidate_streak == 1);
+    assert(l1_step_at(&invalid, (L1Observation){0, 200, 0, false}, 1000) ==
+           L1_HOLD);
+    assert(invalid.memory_candidate_streak == 0);
+    assert(l1_step_at(&invalid, observe(0, 200, 0), 2000) == L1_HOLD);
+    assert(l1_step_at(&invalid, observe(0, 200, 0), 1500) == L1_HOLD);
+    assert(invalid.memory_candidate_streak == 0);
+}
+
+static L1Observation risk_chatter_observation(uint64_t sample) {
+    uint64_t phase = sample % 600U;
+    if (phase < 300U) {
+        return observe((phase / 8U) % 2U == 0U ? 5000 : 0, 0, 0);
+    }
+    return observe(0, 0, ((phase - 300U) / 8U) % 2U == 0U ? 900 : 0);
+}
+
+static void test_risk_aware_bounds_and_time_gate(void) {
+    L1Core fast; l1_init(&fast);
+    for (uint64_t i = 0; i < 5000; ++i)
+        (void)l1_step_at(&fast, risk_chatter_observation(i), 0);
+    assert(fast.cpu_debounce_extra == 0 && fast.io_debounce_extra == 0);
+
+    L1Core c; l1_init(&c);
+    for (uint64_t i = 0; i <= 1800; ++i) {
+        (void)l1_step_at(&c, risk_chatter_observation(i), i * 1000U);
+        if (i == 600) {
+            assert(c.cpu_debounce_extra == 1);
+            assert(c.io_debounce_extra == 1);
+        }
+        if (i == 1200) {
+            assert(c.cpu_debounce_extra == 2);
+            assert(c.io_debounce_extra == 2);
+        }
+    }
+    assert(c.cpu_debounce_extra == L1_MAX_EXTRA_CONFIRMATIONS);
+    assert(c.io_debounce_extra == L1_MAX_EXTRA_CONFIRMATIONS);
 }
 
 static void test_psi_parsing(void) {
@@ -233,6 +305,8 @@ int main(void) {
     test_versioned_rollback();
     test_bounded_slow_adaptation();
     test_adaptation_evaluation_control();
+    test_risk_aware_memory_urgency();
+    test_risk_aware_bounds_and_time_gate();
     test_psi_parsing();
     test_file_policy();
     test_invalid_policy_files();
