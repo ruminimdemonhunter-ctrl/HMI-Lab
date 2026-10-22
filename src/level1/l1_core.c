@@ -27,19 +27,39 @@ bool l1_policy_valid(const L1Policy *p) {
         p->confirmation_samples >= 2 && p->confirmation_samples <= 10;
 }
 
+static void reset_runtime_state(L1Core *core) {
+    core->candidate = L1_HOLD;
+    core->candidate_streak = 0;
+    core->action = L1_HOLD;
+    core->switches_in_window = 0;
+    core->debounce_extra = 0;
+    core->decisions = 0;
+}
+
 bool l1_apply_policy(L1Core *core, const L1Policy *proposal) {
     if (core == NULL || !l1_policy_valid(proposal) ||
         proposal->generation <= core->policy.generation) {
         return false;
     }
-    /* A staged, validated whole-structure replacement. Only one thread writes. */
+    /* Retain one validated snapshot. Only the single event-loop thread writes. */
+    core->previous_policy = core->policy;
+    core->has_previous_policy = true;
     core->policy = *proposal;
-    core->candidate = L1_HOLD;
-    core->candidate_streak = 0;
-    core->action = L1_HOLD; /* fail closed until fresh observations confirm */
-    core->switches_in_window = 0;
-    core->debounce_extra = 0;
-    core->decisions = 0;
+    reset_runtime_state(core); /* fail closed until observations re-confirm */
+    return true;
+}
+
+bool l1_rollback_policy(L1Core *core, uint32_t new_generation) {
+    if (core == NULL || !core->has_previous_policy ||
+        new_generation <= core->policy.generation) {
+        return false;
+    }
+    L1Policy rollback = core->previous_policy;
+    rollback.generation = new_generation;
+    if (!l1_policy_valid(&rollback)) return false;
+    core->previous_policy = core->policy;
+    core->policy = rollback;
+    reset_runtime_state(core);
     return true;
 }
 

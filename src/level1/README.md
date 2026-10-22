@@ -1,4 +1,4 @@
-# HMI Lab | Level 1 v0.1 (C11)
+# HMI Lab | Level 1 v0.2 (C11)
 
 **First working implementation — observe / decide / recommend ONLY.**
 It does not alter process priorities, cgroups, CPU registers, RAM, kernel state,
@@ -18,7 +18,7 @@ baseline with a tiny memory-parametrized adaptive controller.
 ```powershell
 cd C:\Dev\Projects\HMI-Lab
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync-source.ps1
-ssh -p 2222 lab@127.0.0.1 "cd /home/lab/hmi/src/level1 && make clean all && make test && make bench"
+ssh -p 2222 lab@127.0.0.1 "cd /home/lab/hmi/src/level1 && make clean all test bench"
 ssh -p 2222 lab@127.0.0.1 "cd /home/lab/hmi/src/level1 && ./l1_monitor --samples 8 --interval-ms 1000 --policy policy.example"
 ```
 
@@ -49,6 +49,12 @@ process parses the complete candidate and calls `l1_apply_policy()` only if:
 4. values are inside the **compiled** safety envelope;
 5. the engine remains single threaded and activates a whole validated policy
    at a decision boundary, resetting to HOLD until observations re-confirm.
+
+The core also retains one prior validated policy. `l1_rollback_policy()` can
+restore its behavior only under a caller-supplied generation greater than the
+active generation. Rollback therefore does not weaken replay protection and,
+like an ordinary update, resets the recommendation to `HOLD`. The snapshot is
+process-local and is lost at restart.
 
 This is a *prototype policy contract*, **not** an authenticated L2 security
 boundary. Future L2 integration will require access controls, authenticated
@@ -89,18 +95,25 @@ confirmation. At the 1000 ms default sample interval, that is approximately
 10 minutes between any adjustments. This is a conservative anti-flapping
 heuristic — it does not imply that L1 has learned an optimal scheduling policy.
 
-## Acceptance tests
+## Acceptance tests and benchmarks
 
-- `make test` — deterministic decisions, priorities, hysteresis, sensor parser,
-  missing telemetry fail-safe, policy generation/rejection, bounded adaptation.
-- `make bench` — *in-process core-only* average decision computation cost.
+- `make test` — exact synthetic CPU/memory/I/O decision traces plus policy
+  parsing, versions, rejection/state preservation, fallback, rollback, bounded
+  adaptation, hysteresis, priority, and PSI parser tests.
+- `make bench` — five independent repetitions for fixed-rule and L1 engines.
+  `core` runs isolate nanosecond decision cost. `live` runs include all three
+  `/proc/pressure` reads and parsing through the decision, and report wall time,
+  process CPU time, CPU ns/sample, valid observation count, and Linux peak RSS
+  (`ru_maxrss`, KiB). A live run fails if any observation is invalid.
+- Custom repeatable run: `sh ./run_benchmarks.sh REPEATS LIVE_SAMPLES CORE_SAMPLES`.
 - Observe `memory_gen` and `self_extra` in `l1_monitor` output.
 - Program must run as `lab`, without `sudo`.
 
-**Important:** `make bench` does not measure kernel sensor-read overhead,
-energy, system speedup, or real hardware effects. To prove benefits we need
-controlled workloads, fixed baselines, independent outcome measurements and
-net cost accounting.
+**Important:** the live benchmark measures observer/controller overhead, not
+energy, scheduling improvement, or workload benefit. PSI values and host/guest
+load can vary, so compare repeated distributions rather than one run. Peak RSS
+has page-sized resolution and includes the whole process. To prove benefits we
+still need controlled workloads, independent outcomes, and net cost accounting.
 
 ## Components
 
@@ -110,8 +123,10 @@ l1_core.c        Deterministic memory-based decision engine + slow self-change
 l1_linux.c       Read-only Linux PSI adapter
 l1_policy.c      Strict L2-style behavior-memory proposal parser
 l1_main.c        Low-overhead monitoring and safe policy-reload loop
-l1_test.c        Deterministic unit tests
-l1_bench.c       Core-only microbenchmark
+l1_test.c        Policy, fallback, adaptation, parser and rollback tests
+l1_trace_test.c  Synthetic traces with known per-sample decisions
+l1_bench.c       Fixed-vs-L1 core and observation-to-decision benchmark
+run_benchmarks.sh Repeated guest benchmark command
 policy.example   Valid initial policy proposal
 policy.invalid.example  Negative policy test fixture
 Makefile         Build/test/benchmark

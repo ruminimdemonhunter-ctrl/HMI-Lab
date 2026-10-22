@@ -32,12 +32,14 @@ typedef struct {
 
 typedef struct {
     L1Policy policy;                /* behavior-defining memory */
+    L1Policy previous_policy;       /* last validated rollback snapshot */
     L1Action action;              /* active recommendation */
     L1Action candidate;           /* unconfirmed recommendation */
     uint16_t candidate_streak;
     uint8_t debounce_extra;       /* VERY slowly self-adapted: 0..2 */
     uint32_t switches_in_window;
     uint64_t decisions;
+    bool has_previous_policy;
 } L1Core;
 
 enum { L1_SELF_ADAPT_WINDOW = 600, L1_MAX_EXTRA_CONFIRMATIONS = 2 };
@@ -46,6 +48,7 @@ L1Policy l1_default_policy(void);
 void l1_init(L1Core *core);
 bool l1_policy_valid(const L1Policy *policy);
 bool l1_apply_policy(L1Core *core, const L1Policy *proposal);
+bool l1_rollback_policy(L1Core *core, uint32_t new_generation);
 L1Action l1_step(L1Core *core, L1Observation observation);
 const char *l1_action_name(L1Action action);
 
