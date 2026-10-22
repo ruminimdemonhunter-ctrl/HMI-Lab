@@ -54,3 +54,23 @@ The v0.3 replay gives the heuristic a labeled synthetic trace and measures
 false responses, oscillation, and detection delay. Better scores on that trace
 are experimental evidence about that heuristic/trace pair—not machine learning,
 general intelligence, workload benefit, or permission to actuate resources.
+
+## Level 1 v0.4 adaptive-evaluation boundary
+
+V0.4 adds a read-only experimental harness, not a new intelligence layer. A
+seeded generator keeps latent event truth independent from noisy observations,
+and separate development, training, and held-out seeds prevent parameter
+selection on the reported test scenarios. Frozen default, training-tuned fixed,
+and bounded-adaptive candidates all call the same compiled l1_step_at() path
+with identical observations and timestamps.
+
+The only new core control enables or disables the already compiled adaptation
+heuristic for comparison. It defaults enabled, is not policy-file writable or
+persisted, and cannot change priority, thresholds, bounds, fallback behavior,
+or executable logic.
+
+The held-out result was unfavorable: tuned fixed memory beat bounded adaptation
+on the declared loss, and adaptation regressed the high-priority memory metric.
+The preregistered outcome is therefore no-go for actuation. See
+L1-v0.4-evaluation-plan.md and L1-v0.4-validation.md. This result adds no
+scheduler, cgroup, kernel, device, network update, or hardware authority.
