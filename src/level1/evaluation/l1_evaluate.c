@@ -36,6 +36,8 @@ static const size_t family_lengths[FAMILY_COUNT] = {
 static const char *controller_names[CONTROLLER_COUNT] = {
     "frozen-default", "tuned-fixed", "bounded-adaptive"
 };
+static const uint64_t frozen_selected_policy_fingerprint =
+    UINT64_C(0x5147f61840da7089);
 
 typedef struct {
     uint64_t state;
@@ -137,6 +139,23 @@ static uint64_t fnv_add_u64(uint64_t hash, uint64_t value, unsigned bytes) {
         hash *= UINT64_C(1099511628211);
     }
     return hash;
+}
+
+static uint64_t policy_fingerprint(const L1Policy *policy) {
+    uint64_t hash = UINT64_C(1469598103934665603);
+    hash = fnv_add_u64(hash, policy->schema_version, 4);
+    hash = fnv_add_u64(hash, policy->generation, 4);
+    hash = fnv_add_u64(hash, policy->cpu_trigger_bp, 2);
+    hash = fnv_add_u64(hash, policy->memory_trigger_bp, 2);
+    hash = fnv_add_u64(hash, policy->io_trigger_bp, 2);
+    return fnv_add_u64(hash, policy->confirmation_samples, 1);
+}
+
+static bool is_frozen_selected_policy(const L1Policy *policy) {
+    return policy->schema_version == 1 && policy->generation == 1 &&
+        policy->cpu_trigger_bp == 3000 && policy->memory_trigger_bp == 100 &&
+        policy->io_trigger_bp == 500 && policy->confirmation_samples == 2 &&
+        policy_fingerprint(policy) == frozen_selected_policy_fingerprint;
 }
 
 static uint64_t checksum_trace(uint64_t hash, const EvalTrace *trace) {
@@ -608,11 +627,18 @@ static int train(const char *output_path) {
         free(traces);
         return 2;
     }
+    if (!is_frozen_selected_policy(&best_policy)) {
+        fprintf(stderr, "training selection differs from frozen policy identity\n");
+        free(traces);
+        return 2;
+    }
     printf("TRAIN_SELECTED,candidates=%u,seeds=101|211|307|401,checksum=%016" PRIx64
-           ",loss=%.2f,cpu=%u,memory=%u,io=%u,confirmation=%u,output=%s\n",
+           ",loss=%.2f,cpu=%u,memory=%u,io=%u,confirmation=%u,"
+           "policy_fingerprint=%016" PRIx64 ",output=%s\n",
            candidates, checksum, best.loss_q / 4.0, best_policy.cpu_trigger_bp,
            best_policy.memory_trigger_bp, best_policy.io_trigger_bp,
-           best_policy.confirmation_samples, output_path);
+           best_policy.confirmation_samples, policy_fingerprint(&best_policy),
+           output_path);
     free(traces);
     return 0;
 }
@@ -649,6 +675,13 @@ static int heldout(const char *policy_path, unsigned repetitions) {
         fprintf(stderr, "invalid selected policy: %s\n", error);
         return 2;
     }
+    if (!is_frozen_selected_policy(&tuned)) {
+        fprintf(stderr,
+                "selected policy identity mismatch: expected %016" PRIx64
+                ", got %016" PRIx64 "\n",
+                frozen_selected_policy_fingerprint, policy_fingerprint(&tuned));
+        return 2;
+    }
     traces = generate_split(heldout_seeds, seed_count, &checksum);
     if (traces == NULL) {
         fprintf(stderr, "cannot allocate held-out traces\n");
@@ -666,9 +699,10 @@ static int heldout(const char *policy_path, unsigned repetitions) {
     (void)getrusage(RUSAGE_SELF, &usage);
     (void)uname(&system);
     printf("RUN,split=heldout,seeds=1009|2003|3001|4001|5003,checksum=%016" PRIx64
-           ",repetitions=%u,policy=%u|%u|%u|%u\n",
+           ",repetitions=%u,policy=%u|%u|%u|%u,policy_fingerprint=%016" PRIx64 "\n",
            checksum, repetitions, tuned.cpu_trigger_bp, tuned.memory_trigger_bp,
-           tuned.io_trigger_bp, tuned.confirmation_samples);
+           tuned.io_trigger_bp, tuned.confirmation_samples,
+           policy_fingerprint(&tuned));
     printf("ENV,compiler=%s,system=%s,machine=%s,sizeof_l1core=%zu,peak_rss_kib=%ld\n",
            __VERSION__, system.sysname, system.machine, sizeof(L1Core), usage.ru_maxrss);
     print_header();

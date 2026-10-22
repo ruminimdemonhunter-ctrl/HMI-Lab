@@ -2,7 +2,8 @@
 set -eu
 
 policy="${TMPDIR:-/tmp}/l1-v04-args-$$.eval.policy"
-trap 'rm -f "$policy"' EXIT HUP INT TERM
+wrong_policy="${policy}.wrong"
+trap 'rm -f "$policy" "$wrong_policy"' EXIT HUP INT TERM
 
 expect_failure() {
     if ./l1_evaluate "$@" >/dev/null 2>&1; then
@@ -25,8 +26,11 @@ esac
 
 training="$(./l1_evaluate train "$policy")"
 case "$training" in
-    TRAIN_SELECTED,candidates=108,seeds=101\|211\|307\|401,checksum=dd1452338fbb778b,loss=5113.00,cpu=3000,memory=100,io=500,confirmation=2,output=*) ;;
+    TRAIN_SELECTED,candidates=108,seeds=101\|211\|307\|401,checksum=dd1452338fbb778b,loss=5113.00,cpu=3000,memory=100,io=500,confirmation=2,policy_fingerprint=5147f61840da7089,output=*) ;;
     *) echo "FAIL: training selection drift: $training" >&2; exit 1 ;;
 esac
 
-echo "PASS: evaluator arguments, development checksum, and training selection"
+sed 's/confirmation_samples=2/confirmation_samples=3/' "$policy" > "$wrong_policy"
+expect_failure heldout "$wrong_policy" 1
+
+echo "PASS: evaluator arguments, checksums, training selection, and frozen policy identity"
