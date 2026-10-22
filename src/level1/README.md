@@ -1,4 +1,4 @@
-# HMI Lab | Level 1 v0.3 (C11)
+# HMI Lab | Level 1 v0.4 (C11)
 
 **First working implementation — observe / decide / recommend ONLY.**
 It does not alter process priorities, cgroups, CPU registers, RAM, kernel state,
@@ -125,6 +125,13 @@ disposable synchronized `src/` tree. See `docs/L1-v0.3-memory-state.md`.
   process CPU time, CPU ns/sample, valid observation count, and Linux peak RSS
   (`ru_maxrss`, KiB). A live run fails if any observation is invalid.
 - Custom repeatable run: `sh ./run_benchmarks.sh REPEATS LIVE_SAMPLES CORE_SAMPLES`.
+- `make evaluation-ci` — bounded deterministic development, training, and
+  one-repetition held-out regression.
+- `make evaluation-train EVAL_POLICY=/tmp/l1-v04-tuned.eval.policy` — search
+  only the frozen training split.
+- `make evaluation-heldout EVAL_POLICY=/tmp/l1-v04-tuned.eval.policy EVAL_REPETITIONS=100`
+  — compare frozen default, tuned fixed, and bounded adaptive through the real
+  core on the frozen held-out split.
 - Observe `memory_gen` and `self_extra` in `l1_monitor` output.
 - Program must run as `lab`, without `sudo`.
 
@@ -133,6 +140,11 @@ energy, scheduling improvement, or workload benefit. PSI values and host/guest
 load can vary, so compare repeated distributions rather than one run. Peak RSS
 has page-sized resolution and includes the whole process. To prove benefits we
 still need controlled workloads, independent outcomes, and net cost accounting.
+
+The preregistered v0.4 held-out experiment was a negative result: tuned fixed
+memory outperformed bounded adaptation, and adaptation regressed memory-event
+misses and maximum detection delay. It is explicitly a no-go for actuation.
+See `docs/L1-v0.4-evaluation-plan.md` and `docs/L1-v0.4-validation.md`.
 
 ## Components
 
@@ -148,6 +160,9 @@ l1_trace_test.c  Synthetic traces with known per-sample decisions
 l1_state_test.c  Persistence corruption/recovery/permission tests
 l1_bench.c       Fixed-vs-L1 core and observation-to-decision benchmark
 l1_replay.c      Labeled fixed-memory vs bounded-adaptive experiment
+evaluation/l1_evaluate.c  Seeded train/held-out three-controller evaluator
+evaluation/run_ci.sh  Bounded CI evaluation command
+evaluation_args_test.sh  Evaluator CLI, checksum, and training-selection tests
 benchmark_args_test.sh  Benchmark CLI negative tests
 run_benchmarks.sh Repeated guest benchmark command
 run_replays.sh   Repeated deterministic replay command

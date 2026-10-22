@@ -13,6 +13,9 @@
 /src/level1/l1_bench
 /src/level1/l1_state_test
 /src/level1/l1_replay
+/src/level1/l1_evaluate
+*.eval.csv
+*.eval.policy
 *.o
 *.obj
 *.exe
