@@ -182,7 +182,9 @@ bool l1_state_load(const char *path, L1Core *core,
     }
     unsigned char data[V2_STATE_SIZE + 1U];
     size_t count = fread(data, 1, sizeof(data), file);
-    bool read_ok = !ferror(file) && fclose(file) == 0;
+    bool read_ok = !ferror(file);
+    /* Always close the file, including when fread() reported an error. */
+    if (fclose(file) != 0) read_ok = false;
     bool is_v1 = read_ok && count == V1_STATE_SIZE &&
         memcmp(data, v1_magic, sizeof(v1_magic)) == 0 &&
         get_u32(data + 8) == 1 && get_u32(data + 12) == V1_STATE_SIZE &&
