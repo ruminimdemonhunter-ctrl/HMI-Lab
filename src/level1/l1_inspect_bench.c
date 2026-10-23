@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 #include "l1_shadow.h"
 #include "l1_trace.h"
 
@@ -96,17 +96,40 @@ static bool run_cli(const char *path, uint64_t *cpu_ns_out,
         _exit(127);
     }
     int status = 0;
-    if (waitpid(child, &status, 0) != child ||
+    struct rusage child_usage;
+    if (wait4(child, &status, 0, &child_usage) != child ||
         !WIFEXITED(status) || WEXITSTATUS(status) != 0 ||
         clock_gettime(CLOCK_MONOTONIC, &finished) != 0)
         return false;
-    struct rusage children;
-    if (getrusage(RUSAGE_CHILDREN, &children) != 0) return false;
-    *cpu_ns_out = (timeval_us(children.ru_utime) +
-                   timeval_us(children.ru_stime)) * 1000U;
+    *cpu_ns_out = (timeval_us(child_usage.ru_utime) +
+                   timeval_us(child_usage.ru_stime)) * 1000U;
     *wall_ns_out = timespec_ns(finished) - timespec_ns(started);
-    *rss_out = children.ru_maxrss;
+    *rss_out = child_usage.ru_maxrss;
     return true;
+}
+
+static void sort_u64(uint64_t *values, unsigned count) {
+    for (unsigned i = 1; i < count; ++i) {
+        uint64_t value = values[i];
+        unsigned j = i;
+        while (j > 0 && values[j - 1] > value) {
+            values[j] = values[j - 1];
+            --j;
+        }
+        values[j] = value;
+    }
+}
+
+static void sort_long(long *values, unsigned count) {
+    for (unsigned i = 1; i < count; ++i) {
+        long value = values[i];
+        unsigned j = i;
+        while (j > 0 && values[j - 1] > value) {
+            values[j] = values[j - 1];
+            --j;
+        }
+        values[j] = value;
+    }
 }
 
 int main(int argc, char **argv) {
@@ -117,7 +140,9 @@ int main(int argc, char **argv) {
               stderr);
         return EXIT_FAILURE;
     }
-    uint64_t parse_ns = 0, replay_ns = 0, format_ns = 0, sink = 0;
+    uint64_t parser[20], core_shadow[20], formatting[20], replay_pass[20];
+    uint64_t cli_cpu[20], cli_wall[20], sink = 0;
+    long cli_rss[20];
     uint64_t rows = 0, expected_checksum = 0;
     char error[160];
     for (unsigned repetition = 0; repetition < repetitions; ++repetition) {
@@ -127,7 +152,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "parse failed: %s\n", error);
             return EXIT_FAILURE;
         }
-        parse_ns += cpu_ns() - started;
+        parser[repetition] = cpu_ns() - started;
 
         BenchContext replay = {.mode = PASS_REPLAY};
         l1_init(&replay.core);
@@ -139,7 +164,9 @@ int main(int argc, char **argv) {
             fprintf(stderr, "replay failed: %s\n", error);
             return EXIT_FAILURE;
         }
-        replay_ns += cpu_ns() - started;
+        replay_pass[repetition] = cpu_ns() - started;
+        core_shadow[repetition] = replay_pass[repetition] > parser[repetition] ?
+            replay_pass[repetition] - parser[repetition] : 0;
 
         BenchContext format = {.mode = PASS_FORMAT,
                                .sink = UINT64_C(1469598103934665603)};
@@ -149,7 +176,9 @@ int main(int argc, char **argv) {
             fprintf(stderr, "format pass failed: %s\n", error);
             return EXIT_FAILURE;
         }
-        format_ns += cpu_ns() - started;
+        uint64_t format_pass = cpu_ns() - started;
+        formatting[repetition] = format_pass > parser[repetition] ?
+            format_pass - parser[repetition] : 0;
         if (parsed.count != replayed.count || parsed.count != formatted.count ||
             parsed.checksum != replayed.checksum ||
             parsed.checksum != formatted.checksum) {
@@ -159,29 +188,48 @@ int main(int argc, char **argv) {
         rows = parsed.count;
         expected_checksum = parsed.checksum;
         sink ^= replay.sink ^ format.sink;
+        if (!run_cli(argv[1], &cli_cpu[repetition], &cli_wall[repetition],
+                     &cli_rss[repetition])) {
+            fputs("CLI resource run failed\n", stderr);
+            return EXIT_FAILURE;
+        }
     }
     struct rusage usage;
     if (getrusage(RUSAGE_SELF, &usage) != 0) return EXIT_FAILURE;
-    uint64_t cli_cpu_ns, cli_wall_ns;
-    long cli_rss_kib;
-    if (!run_cli(argv[1], &cli_cpu_ns, &cli_wall_ns, &cli_rss_kib)) {
-        fputs("CLI resource run failed\n", stderr);
-        return EXIT_FAILURE;
-    }
-    uint64_t denominator = rows * repetitions;
-    uint64_t replay_delta = replay_ns > parse_ns ? replay_ns - parse_ns : 0;
-    uint64_t format_delta = format_ns > parse_ns ? format_ns - parse_ns : 0;
+    sort_u64(parser, repetitions);
+    sort_u64(core_shadow, repetitions);
+    sort_u64(formatting, repetitions);
+    sort_u64(replay_pass, repetitions);
+    sort_u64(cli_cpu, repetitions);
+    sort_u64(cli_wall, repetitions);
+    sort_long(cli_rss, repetitions);
+    unsigned median = repetitions / 2U;
+#define PER_ROW(values, index) ((double)(values)[index] / (double)rows)
     printf("INSPECT_BENCH rows=%" PRIu64 " repetitions=%u"
-           " parser_ns_per_row=%.3f core_shadow_ns_per_row=%.3f"
-           " format_ns_per_row=%.3f total_replay_pass_ns_per_row=%.3f"
-           " bench_rss_kib=%ld cli_cpu_ns_per_row=%.3f"
-           " cli_wall_ns_per_row=%.3f cli_rss_kib=%ld"
+           " parser_ns_per_row=%.3f(%.3f..%.3f)"
+           " core_shadow_ns_per_row=%.3f(%.3f..%.3f)"
+           " format_ns_per_row=%.3f(%.3f..%.3f)"
+           " total_replay_pass_ns_per_row=%.3f(%.3f..%.3f)"
+           " bench_rss_kib=%ld"
+           " cli_cpu_ns_per_row=%.3f(%.3f..%.3f)"
+           " cli_wall_ns_per_row=%.3f(%.3f..%.3f)"
+           " cli_rss_kib=%ld(%ld..%ld)"
            " trace_checksum=%016" PRIx64 " sink=%016" PRIx64 "\n",
-           rows, repetitions, (double)parse_ns / denominator,
-           (double)replay_delta / denominator,
-           (double)format_delta / denominator,
-           (double)replay_ns / denominator, usage.ru_maxrss,
-           (double)cli_cpu_ns / rows, (double)cli_wall_ns / rows, cli_rss_kib,
+           rows, repetitions,
+           PER_ROW(parser, median), PER_ROW(parser, 0),
+           PER_ROW(parser, repetitions - 1U),
+           PER_ROW(core_shadow, median), PER_ROW(core_shadow, 0),
+           PER_ROW(core_shadow, repetitions - 1U),
+           PER_ROW(formatting, median), PER_ROW(formatting, 0),
+           PER_ROW(formatting, repetitions - 1U),
+           PER_ROW(replay_pass, median), PER_ROW(replay_pass, 0),
+           PER_ROW(replay_pass, repetitions - 1U), usage.ru_maxrss,
+           PER_ROW(cli_cpu, median), PER_ROW(cli_cpu, 0),
+           PER_ROW(cli_cpu, repetitions - 1U),
+           PER_ROW(cli_wall, median), PER_ROW(cli_wall, 0),
+           PER_ROW(cli_wall, repetitions - 1U),
+           cli_rss[median], cli_rss[0], cli_rss[repetitions - 1U],
            expected_checksum, sink);
+#undef PER_ROW
     return EXIT_SUCCESS;
 }
