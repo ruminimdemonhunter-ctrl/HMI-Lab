@@ -95,3 +95,25 @@ all paired memory-event delays and improved on V0.4 global loss, but regressed
 I/O misses and total loss relative to tuned fixed. See
 `L1-v0.5-evaluation-plan.md` and `L1-v0.5-validation.md`. This is bounded
 heuristic adaptation, not online learning or evidence of general intelligence.
+
+## Level 1 v0.6 outcome-feedback boundary
+
+V0.6 adds a fixed-size shadow forecaster beside, not inside, the published
+decision path. The Linux adapter reads cumulative PSI totals for CPU `some`,
+memory `full`, and I/O `full`; clock and filesystem access remain outside the
+deterministic components. A forecast is scored only after its monotonic future
+window has elapsed. Invalid input, gaps, counter decreases, overflow, and time
+regression discard evidence rather than creating an outcome.
+
+The learner may adjust only three forecast-threshold offsets inside compiled
+bounds after both an observation/time gate and repeated directional errors.
+It has no pointer or API capable of changing `L1Core`, behavior memory,
+priority, fallback, or published actions. It uses fixed storage and no hot-path
+allocation. V1/V2 behavior-state encoding is unchanged and shadow state is not
+persisted.
+
+The frozen held-out result is no-go: bounded updates occurred, but every
+forecast remained identical to the tuned static predictor and Brier
+improvement was 0%. V0.6 therefore remains read-only research and is not
+eligible for action coupling. See `L1-v0.6-evaluation-plan.md` and
+`L1-v0.6-validation.md`.
