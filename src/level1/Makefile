@@ -3,13 +3,13 @@ CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic
 CPPFLAGS ?=
 LDLIBS ?=
 
-.PHONY: all test test-ndebug sanitize bench shadow-bench diagnostics-bench replay evaluation-ci evaluation-train evaluation-heldout evaluation-v05-ci evaluation-v05-development evaluation-v05-train evaluation-v05-heldout evaluation-v06-ci evaluation-v06-development evaluation-v06-train evaluation-v06-heldout evaluation-v07-ci evaluation-v07-development evaluation-v07-verification evaluation-v07-heldout clean
-all: l1_monitor l1_trace_record l1_diagnostics l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_bench l1_shadow_bench l1_replay l1_evaluate l1_evaluate_v05 l1_evaluate_v06
+.PHONY: all test test-ndebug sanitize bench shadow-bench recorder-bench recorder-bench-ci psi-bench diagnostics-bench replay evaluation-ci evaluation-train evaluation-heldout evaluation-v05-ci evaluation-v05-development evaluation-v05-train evaluation-v05-heldout evaluation-v06-ci evaluation-v06-development evaluation-v06-train evaluation-v06-heldout evaluation-v07-ci evaluation-v07-development evaluation-v07-verification evaluation-v07-heldout clean
+all: l1_monitor l1_trace_record l1_diagnostics l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_linux_test l1_recorder_bench l1_psi_bench l1_bench l1_shadow_bench l1_replay l1_evaluate l1_evaluate_v05 l1_evaluate_v06
 
 l1_monitor: l1_main.c l1_core.c l1_shadow.c l1_policy.c l1_state.c l1_linux.c l1.h l1_shadow.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ l1_main.c l1_core.c l1_shadow.c l1_policy.c l1_state.c l1_linux.c $(LDLIBS)
 
-l1_trace_record: l1_trace_record.c l1_trace.c l1_linux.c l1_trace.h l1.h
+l1_trace_record: l1_trace_record.c l1_trace.c l1_linux.c l1_trace.h l1_linux.h l1.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ l1_trace_record.c l1_trace.c l1_linux.c $(LDLIBS)
 
 l1_test: l1_test.c l1_core.c l1_policy.c l1_linux.c l1.h
@@ -26,6 +26,15 @@ l1_shadow_test: l1_shadow_test.c l1_shadow.c l1_core.c l1_shadow.h l1.h
 
 l1_record_test: l1_record_test.c l1_trace.c l1_trace.h l1.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ l1_record_test.c l1_trace.c $(LDLIBS)
+
+l1_linux_test: l1_linux_test.c l1_linux.c l1_linux.h l1.h
+	$(CC) $(CPPFLAGS) -DL1_TESTING $(CFLAGS) -o $@ l1_linux_test.c l1_linux.c $(LDLIBS)
+
+l1_recorder_bench: l1_recorder_bench.c l1_linux.c l1_trace.c l1_linux.h l1_trace.h l1.h
+	$(CC) $(CPPFLAGS) -DL1_TESTING $(CFLAGS) -o $@ l1_recorder_bench.c l1_linux.c l1_trace.c $(LDLIBS)
+
+l1_psi_bench: l1_psi_bench.c l1_linux.c l1_linux.h l1.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ l1_psi_bench.c l1_linux.c $(LDLIBS)
 
 l1_bench: l1_bench.c l1_core.c l1_linux.c l1.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ l1_bench.c l1_core.c l1_linux.c $(LDLIBS)
@@ -48,13 +57,15 @@ l1_evaluate_v06: evaluation/l1_evaluate_v06.c l1_core.c l1_shadow.c l1_policy.c 
 l1_diagnostics: evaluation/l1_diagnostics.c l1_core.c l1_shadow.c l1_trace.c l1.h l1_shadow.h l1_trace.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ evaluation/l1_diagnostics.c l1_core.c l1_shadow.c l1_trace.c $(LDLIBS) -lm
 
-test: l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_trace_record l1_diagnostics l1_bench l1_shadow_bench l1_evaluate l1_evaluate_v05 l1_evaluate_v06
+test: l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_linux_test l1_trace_record l1_diagnostics l1_recorder_bench l1_psi_bench l1_bench l1_shadow_bench l1_evaluate l1_evaluate_v05 l1_evaluate_v06
 	./l1_test
 	./l1_trace_test
 	./l1_state_test
 	./l1_shadow_test
 	./l1_record_test
+	./l1_linux_test
 	sh ./trace_args_test.sh
+	sh ./recorder_bench_args_test.sh
 	sh ./diagnostics_args_test.sh
 	sh ./benchmark_args_test.sh
 	sh ./evaluation_args_test.sh
@@ -75,6 +86,15 @@ bench: l1_bench
 
 shadow-bench: l1_shadow_bench
 	sh ./run_shadow_benchmarks.sh 5 10000 10000000
+
+recorder-bench: l1_recorder_bench
+	sh ./run_recorder_benchmarks.sh 5 full
+
+recorder-bench-ci: l1_recorder_bench
+	sh ./run_recorder_benchmarks.sh 1 ci
+
+psi-bench: l1_psi_bench
+	sh ./run_psi_benchmarks.sh 5
 
 diagnostics-bench: l1_diagnostics
 	./l1_diagnostics verification 5
@@ -132,4 +152,4 @@ evaluation-v07-heldout: l1_diagnostics
 	./l1_diagnostics heldout $(EVAL_REPETITIONS)
 
 clean:
-	rm -f l1_monitor l1_trace_record l1_diagnostics l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_bench l1_shadow_bench l1_replay l1_evaluate l1_evaluate_v05 l1_evaluate_v06
+	rm -f l1_monitor l1_trace_record l1_diagnostics l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_linux_test l1_recorder_bench l1_psi_bench l1_bench l1_shadow_bench l1_replay l1_evaluate l1_evaluate_v05 l1_evaluate_v06

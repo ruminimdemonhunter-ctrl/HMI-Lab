@@ -1,9 +1,12 @@
-#include "l1.h"
+#define _POSIX_C_SOURCE 200809L
+#include "l1_linux.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 bool l1_parse_psi_percent(const char *line, const char *category, uint16_t *bp) {
     if (line == NULL || category == NULL || bp == NULL) return false;
@@ -40,21 +43,119 @@ bool l1_parse_psi_sample(const char *line, const char *category,
     return true;
 }
 
-static bool read_psi(const char *path, const char *category, uint16_t *bp,
-                     uint64_t *total_us) {
-    FILE *f = fopen(path, "r");
-    if (f == NULL) return false;
+static bool read_psi_stream(FILE *file, bool rewind_first,
+                            const char *category, uint16_t *bp,
+                            uint64_t *total_us) {
+    if (file == NULL) return false;
+    if (rewind_first) {
+        clearerr(file);
+        if (fseek(file, 0, SEEK_SET) != 0) return false;
+    }
     char line[256];
     bool found = false;
-    while (fgets(line, sizeof(line), f) != NULL) {
+    while (fgets(line, sizeof(line), file) != NULL) {
+        size_t length = strlen(line);
+        if (length == 0 || line[length - 1] != '\n') return false;
         if (l1_parse_psi_sample(line, category, bp, total_us)) {
             found = true;
             break;
         }
     }
-    fclose(f);
     return found;
 }
+
+static bool read_psi(const char *path, const char *category, uint16_t *bp,
+                     uint64_t *total_us) {
+    FILE *file = fopen(path, "r");
+    if (file == NULL) return false;
+    bool found = read_psi_stream(file, false, category, bp, total_us);
+    if (fclose(file) != 0) found = false;
+    return found;
+}
+
+static bool reader_open_paths(L1LinuxPsiReader *reader, const char *cpu_path,
+                              const char *memory_path, const char *io_path) {
+    if (reader == NULL || cpu_path == NULL || memory_path == NULL ||
+        io_path == NULL) return false;
+    *reader = (L1LinuxPsiReader){-1, -1, -1};
+    reader->cpu_fd = open(cpu_path, O_RDONLY | O_CLOEXEC);
+    reader->memory_fd = open(memory_path, O_RDONLY | O_CLOEXEC);
+    reader->io_fd = open(io_path, O_RDONLY | O_CLOEXEC);
+    if (reader->cpu_fd < 0 || reader->memory_fd < 0 || reader->io_fd < 0) {
+        l1_linux_psi_reader_close(reader);
+        return false;
+    }
+    return true;
+}
+
+bool l1_linux_psi_reader_open(L1LinuxPsiReader *reader) {
+    return reader_open_paths(reader, "/proc/pressure/cpu",
+                             "/proc/pressure/memory", "/proc/pressure/io");
+}
+
+void l1_linux_psi_reader_close(L1LinuxPsiReader *reader) {
+    if (reader == NULL) return;
+    if (reader->cpu_fd >= 0) (void)close(reader->cpu_fd);
+    if (reader->memory_fd >= 0) (void)close(reader->memory_fd);
+    if (reader->io_fd >= 0) (void)close(reader->io_fd);
+    *reader = (L1LinuxPsiReader){-1, -1, -1};
+}
+
+static bool read_psi_fd(int descriptor, const char *category, uint16_t *bp,
+                        uint64_t *total_us) {
+    char buffer[1024];
+    ssize_t count = pread(descriptor, buffer, sizeof(buffer) - 1U, 0);
+    if (count <= 0 || (size_t)count >= sizeof(buffer) - 1U) return false;
+    buffer[count] = '\0';
+    char *line = buffer;
+    while (*line != '\0') {
+        char *newline = strchr(line, '\n');
+        if (newline == NULL) return false;
+        if (l1_parse_psi_sample(line, category, bp, total_us)) return true;
+        line = newline + 1;
+    }
+    return false;
+}
+
+bool l1_linux_psi_reader_read(L1LinuxPsiReader *reader, L1Observation *out,
+                              L1PressureCounters *counters) {
+    if (reader == NULL || out == NULL || counters == NULL) return false;
+    *out = (L1Observation){0};
+    *counters = (L1PressureCounters){0};
+    out->valid = read_psi_fd(reader->cpu_fd, "some", &out->cpu_some_bp,
+                             &counters->cpu_some_total_us) &&
+                 read_psi_fd(reader->memory_fd, "full", &out->memory_full_bp,
+                             &counters->memory_full_total_us) &&
+                 read_psi_fd(reader->io_fd, "full", &out->io_full_bp,
+                             &counters->io_full_total_us);
+    counters->valid = out->valid;
+    return out->valid;
+}
+
+#ifdef L1_TESTING
+bool l1_linux_psi_reader_open_paths(L1LinuxPsiReader *reader,
+                                    const char *cpu_path,
+                                    const char *memory_path,
+                                    const char *io_path) {
+    return reader_open_paths(reader, cpu_path, memory_path, io_path);
+}
+
+bool l1_read_linux_sample_paths(const char *cpu_path, const char *memory_path,
+                                const char *io_path, L1Observation *out,
+                                L1PressureCounters *counters) {
+    if (out == NULL || counters == NULL) return false;
+    *out = (L1Observation){0};
+    *counters = (L1PressureCounters){0};
+    out->valid = read_psi(cpu_path, "some", &out->cpu_some_bp,
+                          &counters->cpu_some_total_us) &&
+                 read_psi(memory_path, "full", &out->memory_full_bp,
+                          &counters->memory_full_total_us) &&
+                 read_psi(io_path, "full", &out->io_full_bp,
+                          &counters->io_full_total_us);
+    counters->valid = out->valid;
+    return out->valid;
+}
+#endif
 
 bool l1_read_linux_observation(L1Observation *out) {
     L1PressureCounters counters;

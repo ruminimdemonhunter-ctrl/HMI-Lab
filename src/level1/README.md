@@ -1,4 +1,4 @@
-# HMI Lab | Level 1 v0.6 (C11)
+# HMI Lab | Level 1 v0.8 (C11)
 
 **First working implementation — observe / decide / recommend ONLY.**
 It does not alter process priorities, cgroups, CPU registers, RAM, kernel state,
@@ -185,12 +185,35 @@ The V0.6 held-out result is also negative: the shadow learner's forecasts tied
 the tuned static predictor on every held-out scenario. See
 `docs/L1-v0.6-evaluation-plan.md` and `docs/L1-v0.6-validation.md`.
 
+## Bounded PSI recorder efficiency
+
+V0.8 keeps three read-only PSI descriptors open for the lifetime of an
+explicit finite recording and uses bounded `pread()` buffers for each sample.
+This removes repeated procfs open/close work without caching observations,
+skipping reads, changing the V1 trace schema, or weakening `fsync` and atomic
+no-replace publication. Phase-boundary accounting reports setup, capture-loop,
+publication, total process CPU, wall time, and RSS separately.
+
+`make recorder-bench` runs the frozen five-repetition synthetic 5/65/180-row
+comparison between the retained one-shot reader and persistent reader. It uses
+the V1 trace encoder, checksum, strict parser, durability, and publication path
+but does not sleep or record real PSI. `make psi-bench` compares hot read/parse
+cost against live `/proc/pressure/*` without retaining observations. Neither
+command generates workload or measures resource-management benefit.
+
+A real trace longer than a few-sample smoke capture still requires explicit
+user authorization naming its finite duration and guest-local destination.
+Raw traces remain ignored and are never uploaded automatically. See
+`docs/L1-v0.8-evaluation-plan.md` and `docs/L1-v0.8-validation.md`.
+
 ## Components
 
 ```
 l1.h             Fixed memory/policy/observation interface
 l1_core.c        Deterministic memory-based decision engine + slow self-change
 l1_linux.c       Read-only Linux PSI adapter
+l1_linux.h       Bounded persistent read-only PSI reader interface
+l1_linux_test.c  One-shot/persistent PSI equivalence and failure tests
 l1_shadow.h/.c   Fixed-size delayed-outcome shadow learner
 l1_policy.c      Strict L2-style behavior-memory proposal parser
 l1_state.c       Versioned CRC state, atomic persistence and safe recovery
@@ -201,6 +224,8 @@ l1_state_test.c  Persistence corruption/recovery/permission tests
 l1_shadow_test.c Causal feedback, reset/saturation, unchanged-action tests
 l1_bench.c       Fixed-vs-L1 core and observation-to-decision benchmark
 l1_shadow_bench.c Shadow hot-path and complete observation benchmark
+l1_recorder_bench.c Deterministic complete recorder-path comparison
+l1_psi_bench.c   Non-recording live PSI read/parse profiler
 l1_replay.c      Labeled fixed-memory vs bounded-adaptive experiment
 evaluation/l1_evaluate.c  Seeded train/held-out three-controller evaluator
 evaluation/l1_evaluate_v05.c  Frozen four-controller risk-aware evaluator
@@ -214,6 +239,8 @@ evaluation_v06_args_test.sh  V0.6 checksum and manifest-identity tests
 benchmark_args_test.sh  Benchmark CLI negative tests
 run_benchmarks.sh Repeated guest benchmark command
 run_replays.sh   Repeated deterministic replay command
+run_recorder_benchmarks.sh Repeated synthetic recorder benchmark
+run_psi_benchmarks.sh Repeated live PSI source-only profile
 policy.example   Valid initial policy proposal
 policy.invalid.example  Negative policy test fixture
 Makefile         Build/test/sanitize/replay/benchmark

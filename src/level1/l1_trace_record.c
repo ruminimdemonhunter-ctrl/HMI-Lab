@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 700
+#include "l1_linux.h"
 #include "l1_trace.h"
 
 #include <errno.h>
@@ -38,6 +39,19 @@ static uint64_t timeval_nanoseconds(struct timeval value) {
         (uint64_t)value.tv_usec * UINT64_C(1000);
 }
 
+static uint64_t usage_nanoseconds(struct rusage value) {
+    return timeval_nanoseconds(value.ru_utime) +
+        timeval_nanoseconds(value.ru_stime);
+}
+
+static uint64_t elapsed_nanoseconds(struct timespec start, struct timespec end) {
+    uint64_t start_ns = (uint64_t)start.tv_sec * UINT64_C(1000000000) +
+        (uint64_t)start.tv_nsec;
+    uint64_t end_ns = (uint64_t)end.tv_sec * UINT64_C(1000000000) +
+        (uint64_t)end.tv_nsec;
+    return end_ns >= start_ns ? end_ns - start_ns : 0;
+}
+
 static bool safe_parent(const char *path) {
     if (path == NULL || path[0] != '/') return false;
     char copy[4096], resolved[4096];
@@ -64,6 +78,13 @@ static bool write_hashed(FILE *file, uint64_t *hash, uint64_t *bytes,
 }
 
 int main(int argc, char **argv) {
+    struct rusage usage_process_start;
+    struct timespec wall_process_start;
+    if (getrusage(RUSAGE_SELF, &usage_process_start) != 0 ||
+        clock_gettime(CLOCK_MONOTONIC, &wall_process_start) != 0) {
+        fputs("recorder timing initialization failed\n", stderr);
+        return 2;
+    }
     const char *output = NULL;
     uint32_t samples = 0, duration = 0, cadence = 1000;
     for (int i = 1; i < argc; ++i) {
@@ -99,6 +120,13 @@ int main(int argc, char **argv) {
     if (descriptor < 0) { perror("open temporary trace"); return 2; }
     FILE *file = fdopen(descriptor, "wb");
     if (file == NULL) { close(descriptor); unlink(temporary); return 2; }
+    L1LinuxPsiReader reader;
+    if (!l1_linux_psi_reader_open(&reader)) {
+        (void)fclose(file);
+        (void)unlink(temporary);
+        fputs("opening Linux PSI sources failed\n", stderr);
+        return 2;
+    }
     (void)signal(SIGINT, stop_recording);
     (void)signal(SIGTERM, stop_recording);
     uint64_t hash = UINT64_C(1469598103934665603), bytes = 0;
@@ -121,8 +149,8 @@ int main(int argc, char **argv) {
     ok = ok && write_hashed(file, &hash, &bytes,
         "columns=relative_ms,cpu_some_bp,memory_full_bp,io_full_bp,"
         "cpu_some_total_us,memory_full_total_us,io_full_total_us,valid,flags\n");
-    struct rusage usage_start;
-    if (getrusage(RUSAGE_SELF, &usage_start) != 0) ok = false;
+    struct rusage usage_loop_start, usage_loop_end;
+    if (getrusage(RUSAGE_SELF, &usage_loop_start) != 0) ok = false;
     struct timespec start;
     if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) ok = false;
     uint64_t count = 0;
@@ -132,7 +160,7 @@ int main(int argc, char **argv) {
         uint64_t relative = milliseconds(now) - milliseconds(start);
         L1Observation observation;
         L1PressureCounters counters;
-        bool valid = l1_read_linux_sample(&observation, &counters);
+        bool valid = l1_linux_psi_reader_read(&reader, &observation, &counters);
         uint8_t flags = valid ? 0U : 1U;
         if (!valid) {
             observation = (L1Observation){0, 0, 0, false};
@@ -161,6 +189,8 @@ int main(int argc, char **argv) {
         } while (sleep_result == EINTR && !interrupted);
         if (sleep_result != 0 && !interrupted) ok = false;
     }
+    if (getrusage(RUSAGE_SELF, &usage_loop_end) != 0) ok = false;
+    l1_linux_psi_reader_close(&reader);
     if (count < 2) ok = false;
     int footer = snprintf(line, sizeof(line), "END,count=%" PRIu64
                           ",fnv1a64=%016" PRIx64 "\n", count, hash);
@@ -177,17 +207,37 @@ int main(int argc, char **argv) {
                             "recording failed; partial removed\n", stderr);
         return interrupted ? 130 : 2;
     }
-    struct rusage usage;
-    (void)getrusage(RUSAGE_SELF, &usage);
-    uint64_t cpu_start_ns = timeval_nanoseconds(usage_start.ru_utime) +
-        timeval_nanoseconds(usage_start.ru_stime);
-    uint64_t cpu_end_ns = timeval_nanoseconds(usage.ru_utime) +
-        timeval_nanoseconds(usage.ru_stime);
-    uint64_t cpu_ns = cpu_end_ns >= cpu_start_ns ?
-        cpu_end_ns - cpu_start_ns : 0;
+    struct rusage usage_end;
+    struct timespec wall_end;
+    if (getrusage(RUSAGE_SELF, &usage_end) != 0 ||
+        clock_gettime(CLOCK_MONOTONIC, &wall_end) != 0) {
+        fputs("recorder final timing failed\n", stderr);
+        return 2;
+    }
+    uint64_t process_start_ns = usage_nanoseconds(usage_process_start);
+    uint64_t loop_start_ns = usage_nanoseconds(usage_loop_start);
+    uint64_t loop_end_ns = usage_nanoseconds(usage_loop_end);
+    uint64_t end_ns = usage_nanoseconds(usage_end);
+    uint64_t setup_cpu_ns = loop_start_ns >= process_start_ns ?
+        loop_start_ns - process_start_ns : 0;
+    uint64_t loop_cpu_ns = loop_end_ns >= loop_start_ns ?
+        loop_end_ns - loop_start_ns : 0;
+    uint64_t publication_cpu_ns = end_ns >= loop_end_ns ?
+        end_ns - loop_end_ns : 0;
+    uint64_t total_cpu_ns = end_ns >= process_start_ns ?
+        end_ns - process_start_ns : 0;
+    uint64_t capture_cpu_ns = loop_cpu_ns + publication_cpu_ns;
+    uint64_t wall_ns = elapsed_nanoseconds(wall_process_start, wall_end);
     printf("TRACE_RECORDED,samples=%" PRIu64 ",bytes=%" PRIu64
-           ",checksum=%016" PRIx64 ",cpu_ns_per_sample=%.3f,rss_kib=%ld\n",
+           ",checksum=%016" PRIx64 ",cpu_ns_per_sample=%.3f"
+           ",total_cpu_ns_per_sample=%.3f,setup_cpu_ns=%" PRIu64
+           ",loop_cpu_ns=%" PRIu64 ",publication_cpu_ns=%" PRIu64
+           ",total_cpu_ns=%" PRIu64 ",wall_ns=%" PRIu64
+           ",rss_kib=%ld\n",
            count, bytes + (uint64_t)footer, hash,
-           count ? (double)cpu_ns / (double)count : 0.0, usage.ru_maxrss);
+           count ? (double)capture_cpu_ns / (double)count : 0.0,
+           count ? (double)total_cpu_ns / (double)count : 0.0,
+           setup_cpu_ns, loop_cpu_ns, publication_cpu_ns, total_cpu_ns,
+           wall_ns, usage_end.ru_maxrss);
     return 0;
 }

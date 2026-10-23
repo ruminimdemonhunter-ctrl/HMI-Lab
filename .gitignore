@@ -17,6 +17,9 @@
 /src/level1/l1_state_test
 /src/level1/l1_shadow_test
 /src/level1/l1_record_test
+/src/level1/l1_linux_test
+/src/level1/l1_recorder_bench
+/src/level1/l1_psi_bench
 /src/level1/l1_replay
 /src/level1/l1_evaluate
 /src/level1/l1_evaluate_v05

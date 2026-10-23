@@ -138,3 +138,23 @@ The diagnostic machinery passed its synthetic, memory, and unchanged-action
 gates, but the recorder exceeded its frozen CPU/sample budget. V0.7 is therefore
 `DIAGNOSTICS_NO_GO`; V0.6 prediction and action coupling remain NO-GO. See
 `L1-v0.7-evaluation-plan.md` and `L1-v0.7-validation.md`.
+
+## Level 1 v0.8 recorder-efficiency boundary
+
+V0.8 changes only the explicitly invoked PSI recorder's observation adapter.
+It opens the same CPU `some`, memory `full`, and I/O `full` procfs sources once,
+reads every source on every cadence through bounded `pread()` buffers, and
+closes all descriptors before publication. It does not cache or infer a sample,
+write a PSI trigger, run a workload, or change L1 decisions or shadow learning.
+
+The V1 trace bytes and strict parser, finite sample/duration/file caps,
+mode-0600 temporary file, `fsync`, atomic no-replace hard-link publication,
+signal cleanup, decision core, shadow state, and 72-byte V2 persistence remain
+unchanged. Performance tooling uses deterministic synthetic PSI fixtures and
+separately profiles live read/parse without retaining observations. Longer real
+recordings remain opt-in and guest-local.
+
+Recorder efficiency and real-evidence readiness have separate preregistered
+verdicts. Neither can revise the historical `DIAGNOSTICS`,
+`SHADOW_PREDICTION`, or `ACTION_COUPLING` NO-GO findings or authorize resource
+actuation. See `L1-v0.8-evaluation-plan.md` and `L1-v0.8-validation.md`.
