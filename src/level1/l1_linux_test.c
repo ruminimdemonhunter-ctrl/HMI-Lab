@@ -63,8 +63,31 @@ static void compare_readers(L1LinuxPsiReader *reader, const char *cpu,
     bool candidate = l1_linux_psi_reader_read(reader, &candidate_observation,
                                               &candidate_counters);
     CHECK(baseline == expected && candidate == expected);
-    check_equal(baseline_observation, baseline_counters,
-                candidate_observation, candidate_counters);
+    CHECK(baseline_observation.valid == expected);
+    CHECK(candidate_observation.valid == expected);
+    CHECK(baseline_counters.valid == expected);
+    CHECK(candidate_counters.valid == expected);
+    if (expected) {
+        check_equal(baseline_observation, baseline_counters,
+                    candidate_observation, candidate_counters);
+    }
+}
+
+static void check_one_shot_only(L1LinuxPsiReader *reader, const char *cpu,
+                                const char *memory, const char *io) {
+    L1Observation observation;
+    L1PressureCounters counters;
+    CHECK(l1_read_linux_sample_paths(cpu, memory, io, &observation, &counters));
+    CHECK(observation.valid && counters.valid);
+    CHECK(observation.cpu_some_bp == 1234);
+    CHECK(observation.memory_full_bp == 40);
+    CHECK(observation.io_full_bp == 150);
+    CHECK(counters.cpu_some_total_us == 123456);
+    CHECK(counters.memory_full_total_us == 456);
+    CHECK(counters.io_full_total_us == 789);
+
+    CHECK(!l1_linux_psi_reader_read(reader, &observation, &counters));
+    CHECK(!observation.valid && !counters.valid);
 }
 
 int main(void) {
@@ -87,6 +110,19 @@ int main(void) {
     CHECK(l1_linux_psi_reader_open_paths(&reader, cpu, memory, io));
     compare_readers(&reader, cpu, memory, io, true);
 
+    /* V0.7's fgets baseline accepts a syntactically complete final line even
+       without a newline. The bounded pread reader requires complete procfs
+       records and therefore rejects this non-procfs fixture. */
+    write_text(cpu, "some avg10=12.34 avg60=1.00 avg300=2.00 total=123456");
+    write_text(memory, "full avg10=0.40 avg60=0.30 avg300=0.20 total=456");
+    write_text(io, "full avg10=1.50 avg60=1.00 avg300=0.50 total=789");
+    check_one_shot_only(&reader, cpu, memory, io);
+
+    write_text(cpu, "some avg10=12.34 avg60=1.00 avg300=2.00 total=123456\n");
+    write_text(memory, "full avg10=0.40 avg60=0.30 avg300=0.20 total=456\n");
+    write_text(io, "full avg10=1.50 avg60=1.00 avg300=0.50 total=789\n");
+    compare_readers(&reader, cpu, memory, io, true);
+
     write_text(cpu, "some avg10=100.00 avg60=0.00 avg300=0.00 total=18446744073709551615\n");
     write_text(memory, "full avg10=0.00 avg60=0.00 avg300=0.00 total=0\n");
     write_text(io, "full avg10=99.99 avg60=0.00 avg300=0.00 total=42\n");
@@ -96,7 +132,12 @@ int main(void) {
     compare_readers(&reader, cpu, memory, io, false);
     write_text(memory, "");
     compare_readers(&reader, cpu, memory, io, false);
-    write_text(memory, "full avg10=0.40 avg60=0.30 avg300=0.20 total=456");
+    write_text(memory, "full avg10=0.40 avg60=0.30 avg300=0.20 total=\n");
+    compare_readers(&reader, cpu, memory, io, false);
+    write_text(memory, "full avg10=0.40 avg60=0.30 avg300=0.20 total=456x\n");
+    compare_readers(&reader, cpu, memory, io, false);
+    write_text(memory, "full avg10=0.40 avg60=0.30 avg300=0.20\n"
+                       "some avg10=2.00 avg60=1.00 avg300=0.50 total=456\n");
     compare_readers(&reader, cpu, memory, io, false);
     write_oversized(memory);
     compare_readers(&reader, cpu, memory, io, false);
@@ -117,6 +158,6 @@ int main(void) {
     CHECK(unlink(memory) == 0);
     CHECK(unlink(io) == 0);
     CHECK(rmdir(directory) == 0);
-    puts("PASS: one-shot and persistent PSI readers are value-equivalent");
+    puts("PASS: V0.7 EOF compatibility, strict records, and supported PSI equivalence");
     return 0;
 }

@@ -194,6 +194,14 @@ skipping reads, changing the V1 trace schema, or weakening `fsync` and atomic
 no-replace publication. Phase-boundary accounting reports setup, capture-loop,
 publication, total process CPU, wall time, and RSS separately.
 
+The retained V0.7 one-shot comparator preserves its historical `fgets()`
+behavior, including acceptance of a syntactically complete final fixture line
+without a newline. The production persistent reader is deliberately stricter:
+Linux PSI records must be newline-terminated, fit in its bounded buffer, and
+are isolated before parsing so fields cannot be borrowed from a later line.
+Both readers are value-equivalent for supported newline-terminated Linux PSI
+input; EOF-without-newline is retained only as baseline compatibility behavior.
+
 `make recorder-bench` runs the frozen five-repetition synthetic 5/65/180-row
 comparison between the retained one-shot reader and persistent reader. It uses
 the V1 trace encoder, checksum, strict parser, durability, and publication path

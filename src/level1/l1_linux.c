@@ -43,33 +43,19 @@ bool l1_parse_psi_sample(const char *line, const char *category,
     return true;
 }
 
-static bool read_psi_stream(FILE *file, bool rewind_first,
-                            const char *category, uint16_t *bp,
-                            uint64_t *total_us) {
-    if (file == NULL) return false;
-    if (rewind_first) {
-        clearerr(file);
-        if (fseek(file, 0, SEEK_SET) != 0) return false;
-    }
+static bool read_psi(const char *path, const char *category, uint16_t *bp,
+                     uint64_t *total_us) {
+    FILE *f = fopen(path, "r");
+    if (f == NULL) return false;
     char line[256];
     bool found = false;
-    while (fgets(line, sizeof(line), file) != NULL) {
-        size_t length = strlen(line);
-        if (length == 0 || line[length - 1] != '\n') return false;
+    while (fgets(line, sizeof(line), f) != NULL) {
         if (l1_parse_psi_sample(line, category, bp, total_us)) {
             found = true;
             break;
         }
     }
-    return found;
-}
-
-static bool read_psi(const char *path, const char *category, uint16_t *bp,
-                     uint64_t *total_us) {
-    FILE *file = fopen(path, "r");
-    if (file == NULL) return false;
-    bool found = read_psi_stream(file, false, category, bp, total_us);
-    if (fclose(file) != 0) found = false;
+    fclose(f);
     return found;
 }
 
@@ -111,8 +97,10 @@ static bool read_psi_fd(int descriptor, const char *category, uint16_t *bp,
     while (*line != '\0') {
         char *newline = strchr(line, '\n');
         if (newline == NULL) return false;
+        char *next = newline + 1;
+        *newline = '\0';
         if (l1_parse_psi_sample(line, category, bp, total_us)) return true;
-        line = newline + 1;
+        line = next;
     }
     return false;
 }
