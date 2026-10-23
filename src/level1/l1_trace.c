@@ -25,6 +25,20 @@ uint64_t l1_trace_hash_bytes(uint64_t hash, const void *data, size_t size) {
     return hash;
 }
 
+bool l1_trace_duration_fits(uint32_t duration_sec, uint32_t cadence_ms) {
+    uint64_t duration_ms = (uint64_t)duration_sec * 1000U;
+    uint64_t last_available_offset =
+        (uint64_t)(L1_TRACE_MAX_SAMPLES - 1) * cadence_ms;
+    return duration_ms <= last_available_offset;
+}
+
+uint64_t l1_trace_next_offset_ms(uint64_t samples_written,
+                                 uint32_t cadence_ms, uint32_t duration_sec) {
+    uint64_t offset = samples_written * cadence_ms;
+    uint64_t deadline = (uint64_t)duration_sec * 1000U;
+    return duration_sec != 0 && offset > deadline ? deadline : offset;
+}
+
 static bool clean_line(const char *line, size_t length) {
     if (length == 0 || length > L1_TRACE_MAX_LINE || line[length - 1] != '\n')
         return false;

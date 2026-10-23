@@ -35,6 +35,9 @@ typedef struct {
 typedef bool (*L1TraceRowFn)(const L1TraceRow *row, void *context);
 
 uint64_t l1_trace_hash_bytes(uint64_t hash, const void *data, size_t size);
+bool l1_trace_duration_fits(uint32_t duration_sec, uint32_t cadence_ms);
+uint64_t l1_trace_next_offset_ms(uint64_t samples_written,
+                                 uint32_t cadence_ms, uint32_t duration_sec);
 bool l1_trace_read(const char *path, L1TraceRowFn callback, void *context,
                    L1TraceInfo *info, char *error, size_t error_size);
 

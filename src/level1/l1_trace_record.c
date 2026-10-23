@@ -87,6 +87,11 @@ int main(int argc, char **argv) {
         fputs("refusing unsafe, existing, or incompletely bounded output\n", stderr);
         return 2;
     }
+    if (duration && !l1_trace_duration_fits(duration, cadence)) {
+        fputs("duration and cadence require more than 86400 trace samples\n",
+              stderr);
+        return 2;
+    }
     char temporary[4096];
     int temporary_size = snprintf(temporary, sizeof(temporary), "%s.partial", output);
     if (temporary_size <= 0 || (size_t)temporary_size >= sizeof(temporary)) return 2;
@@ -145,7 +150,8 @@ int main(int argc, char **argv) {
         if (samples && count >= samples) break;
         if (duration && count >= 2 && relative >= (uint64_t)duration * 1000U)
             break;
-        uint64_t target_ms = milliseconds(start) + count * (uint64_t)cadence;
+        uint64_t target_ms = milliseconds(start) +
+            l1_trace_next_offset_ms(count, cadence, duration);
         struct timespec target = {(time_t)(target_ms / 1000U),
                                   (long)(target_ms % 1000U) * 1000000L};
         int sleep_result;

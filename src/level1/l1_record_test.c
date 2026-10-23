@@ -74,6 +74,15 @@ static void expect_invalid(const char *path, const char *const rows[3],
 }
 
 int main(void) {
+    CHECK(!l1_trace_duration_fits(86400, 1000));
+    CHECK(l1_trace_duration_fits(86399, 1000));
+    CHECK(l1_trace_duration_fits(86400, 1001));
+    CHECK(l1_trace_duration_fits(2, 60000));
+    CHECK(l1_trace_next_offset_ms(1, 1000, 2) == 1000);
+    CHECK(l1_trace_next_offset_ms(2, 1000, 2) == 2000);
+    CHECK(l1_trace_next_offset_ms(1, 60000, 2) == 2000);
+    CHECK(l1_trace_next_offset_ms(1, 60000, 0) == 60000);
+
     char path[] = "/tmp/hmi-l1-trace-test-XXXXXX";
     int descriptor = mkstemp(path);
     CHECK(descriptor >= 0);

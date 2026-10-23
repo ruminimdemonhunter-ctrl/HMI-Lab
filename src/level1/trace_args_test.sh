@@ -8,6 +8,19 @@ expect_reject() {
     fi
 }
 
+expect_reject_message() {
+    expected=$1
+    shift
+    message=$(timeout 5 ./l1_trace_record "$@" 2>&1) && {
+        echo "FAIL: recorder accepted invalid arguments: $*" >&2
+        exit 1
+    }
+    case "$message" in
+        *"$expected"*) ;;
+        *) echo "FAIL: recorder rejection lacked: $expected" >&2; exit 1 ;;
+    esac
+}
+
 expect_reject
 expect_reject --output relative.l1trace --samples 5
 expect_reject --output /tmp/x.l1trace
@@ -15,6 +28,14 @@ expect_reject --output /tmp/x.l1trace --samples 1
 expect_reject --output /tmp/x.l1trace --samples 5 --duration-sec 5
 expect_reject --output /tmp/x.l1trace --samples 5 --cadence-ms 999
 expect_reject --output /home/lab/hmi/src/x.l1trace --samples 5
+bound="/tmp/hmi-l1-recorder-bound-$$.l1trace"
+expect_reject_message "more than 86400 trace samples" \
+    --output "$bound" \
+    --duration-sec 86400 --cadence-ms 1000
+if [ -e "$bound" ] || [ -e "$bound.partial" ]; then
+    echo "FAIL: rejected duration/cadence pair created an output file" >&2
+    exit 1
+fi
 
 base="/tmp/hmi-l1-recorder-test-$$"
 race="$base-race.l1trace"
@@ -50,7 +71,8 @@ if [ "$sentinel_before" != "$sentinel_after" ] || [ -e "$race.partial" ]; then
     exit 1
 fi
 
-./l1_trace_record --output "$duration" --duration-sec 2 --cadence-ms 1000 \
+timeout 10 ./l1_trace_record --output "$duration" \
+    --duration-sec 2 --cadence-ms 60000 \
     >/dev/null
 ./l1_diagnostics trace "$duration" live-default >/dev/null
 ./l1_trace_record --output "$samples" --samples 3 --cadence-ms 1000 \
