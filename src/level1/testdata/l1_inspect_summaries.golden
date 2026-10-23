@@ -1,0 +1,10 @@
+SUMMARY name=idle-noise rows=8 hold=8 interactive=0 protect_memory=0 defer_io=0 fallbacks=0 feedback_windows=0 fixed_differences=0 observer_mismatches=0 checksum=54af6364d075f966
+SUMMARY name=rising-cpu rows=7 hold=4 interactive=3 protect_memory=0 defer_io=0 fallbacks=0 feedback_windows=0 fixed_differences=0 observer_mismatches=0 checksum=952ad459e7ff30b3
+SUMMARY name=urgent-memory rows=6 hold=3 interactive=0 protect_memory=3 defer_io=0 fallbacks=0 feedback_windows=0 fixed_differences=0 observer_mismatches=0 checksum=795181e9309912d5
+SUMMARY name=sustained-io rows=7 hold=3 interactive=0 protect_memory=0 defer_io=4 fallbacks=0 feedback_windows=0 fixed_differences=0 observer_mismatches=0 checksum=1ede234d92dde15e
+SUMMARY name=overlap-priority rows=12 hold=3 interactive=3 protect_memory=2 defer_io=4 fallbacks=0 feedback_windows=0 fixed_differences=0 observer_mismatches=0 checksum=886abf8fd06a1502
+SUMMARY name=invalid-telemetry rows=7 hold=5 interactive=2 protect_memory=0 defer_io=0 fallbacks=1 feedback_windows=0 fixed_differences=0 observer_mismatches=0 checksum=4b81ae005eb42cba
+SUMMARY name=monotonic-regression rows=7 hold=5 interactive=2 protect_memory=0 defer_io=0 fallbacks=1 feedback_windows=0 fixed_differences=0 observer_mismatches=0 checksum=9d405c791f2efb0d
+SUMMARY name=reset-recovery rows=8 hold=6 interactive=0 protect_memory=0 defer_io=2 fallbacks=1 feedback_windows=0 fixed_differences=0 observer_mismatches=0 checksum=9b661be5514c4c15
+SUMMARY name=policy-rollback rows=7 hold=3 interactive=4 protect_memory=0 defer_io=0 fallbacks=0 feedback_windows=0 fixed_differences=0 observer_mismatches=0 checksum=4cca8b96837fbd19
+SUMMARY name=shadow-prediction rows=13 hold=13 interactive=0 protect_memory=0 defer_io=0 fallbacks=0 feedback_windows=1 fixed_differences=0 observer_mismatches=0 checksum=cafd0541f68605d8
