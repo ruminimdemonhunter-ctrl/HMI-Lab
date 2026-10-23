@@ -42,7 +42,7 @@ static bool decimal_u64(const char *text, uint64_t maximum, uint64_t *out) {
     for (const unsigned char *p = (const unsigned char *)text; *p; ++p) {
         if (*p < '0' || *p > '9') return false;
         unsigned digit = (unsigned)(*p - '0');
-        if (value > (maximum - digit) / 10U) return false;
+        if (digit > maximum || value > (maximum - digit) / 10U) return false;
         value = value * 10U + digit;
     }
     *out = value;

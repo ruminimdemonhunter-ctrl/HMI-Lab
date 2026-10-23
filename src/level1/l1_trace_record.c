@@ -125,7 +125,6 @@ int main(int argc, char **argv) {
         struct timespec now;
         if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) { ok = false; break; }
         uint64_t relative = milliseconds(now) - milliseconds(start);
-        if (duration && count >= 2 && relative > (uint64_t)duration * 1000U) break;
         L1Observation observation;
         L1PressureCounters counters;
         bool valid = l1_read_linux_sample(&observation, &counters);
@@ -144,6 +143,8 @@ int main(int argc, char **argv) {
             !write_hashed(file, &hash, &bytes, line)) { ok = false; break; }
         count++;
         if (samples && count >= samples) break;
+        if (duration && count >= 2 && relative >= (uint64_t)duration * 1000U)
+            break;
         uint64_t target_ms = milliseconds(start) + count * (uint64_t)cadence;
         struct timespec target = {(time_t)(target_ms / 1000U),
                                   (long)(target_ms % 1000U) * 1000000L};
@@ -162,7 +163,8 @@ int main(int argc, char **argv) {
         bytes + (uint64_t)footer <= L1_TRACE_MAX_BYTES &&
         fputs(line, file) >= 0 && fflush(file) == 0 && fsync(descriptor) == 0;
     if (fclose(file) != 0) published = false;
-    if (published && rename(temporary, output) != 0) published = false;
+    if (published && link(temporary, output) != 0) published = false;
+    if (published && unlink(temporary) != 0) published = false;
     if (!published) {
         (void)unlink(temporary);
         fputs(interrupted ? "recording interrupted; partial removed\n" :
