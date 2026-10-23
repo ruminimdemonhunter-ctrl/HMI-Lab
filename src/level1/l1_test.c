@@ -246,11 +246,22 @@ static void test_risk_aware_bounds_and_time_gate(void) {
 
 static void test_psi_parsing(void) {
     uint16_t bp = 0;
+    uint64_t total = 0;
     assert(l1_parse_psi_percent("some avg10=12.34 avg60=1.00 avg300=1.00 total=1\n", "some", &bp));
     assert(bp == 1234);
+    assert(l1_parse_psi_percent("some avg10=12.34\n", "some", &bp));
+    assert(bp == 1234);
+    assert(l1_parse_psi_sample(
+        "some avg10=12.34 avg60=1.00 avg300=1.00 total=18446744073709551615\n",
+        "some", &bp, &total));
+    assert(bp == 1234 && total == UINT64_MAX);
     assert(!l1_parse_psi_percent("full avg10=12.34\n", "some", &bp));
     assert(!l1_parse_psi_percent("some avg10=nan\n", "some", &bp));
     assert(!l1_parse_psi_percent("some avg10=12.34invalid\n", "some", &bp));
+    assert(!l1_parse_psi_sample("some avg10=1 avg60=0 total=-1\n",
+                                "some", &bp, &total));
+    assert(!l1_parse_psi_sample("some avg10=1 avg60=0 total=12x\n",
+                                "some", &bp, &total));
 }
 
 static void test_file_policy(void) {

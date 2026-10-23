@@ -1,10 +1,11 @@
-# HMI Lab | Level 1 v0.5 (C11)
+# HMI Lab | Level 1 v0.6 (C11)
 
 **First working implementation — observe / decide / recommend ONLY.**
 It does not alter process priorities, cgroups, CPU registers, RAM, kernel state,
 firmware, QEMU, or the Windows host. This is **not yet a trained AI** and has
 not demonstrated resource-management improvements. It is a safe research
-baseline with a tiny memory-parametrized adaptive controller.
+baseline with a tiny memory-parametrized controller and outcome-aware shadow
+forecast experiment.
 
 ## Where it runs
 
@@ -25,7 +26,8 @@ ssh -p 2222 lab@127.0.0.1 "mkdir -p /home/lab/hmi/state && cd /home/lab/hmi/src/
 The CLI samples `/proc/pressure/cpu` **some** and `/proc/pressure/memory`
 and `/proc/pressure/io` **full**; these are Linux PSI *stall* metrics, not
 physical CPU/RAM utilization or exclusive ownership of hardware. `avg10`
-values are the kernel's short-term averages. Missing telemetry forces `HOLD`.
+values are the kernel's short-term averages. V0.6 also reads their cumulative
+`total` counters for delayed shadow outcomes. Missing telemetry forces `HOLD`.
 
 Possible recommendations:
 
@@ -98,6 +100,22 @@ The V0.4 global heuristic remains compiled only as a reproducible research
 comparator. This is bounded anti-flapping logic, not online ground-truth
 learning or evidence that L1 has learned an optimal resource policy.
 
+## Outcome-aware shadow forecast
+
+V0.6 makes a binary future-pressure prediction from information available at
+the current sample, then evaluates it only after a 60-second monotonic window
+using cumulative PSI counter differences. Its three threshold offsets have
+compiled bounds, require at least 600 valid observations and 600,000 ms, and
+move by at most one step after repeated directional errors. Counter reset,
+overflow, invalid input, long gaps, or time regression discards the pending
+evidence safely.
+
+`L1Shadow` is fixed-size, allocation-free, and isolated from `L1Core`. Shadow
+predictions and learned offsets cannot modify a recommendation or V0.5 safety
+behavior. They are not persisted. The held-out V0.6 experiment made bounded
+updates but did not improve any forecast over tuned static, so its scientific
+result and action-coupling decision are both NO-GO.
+
 ## Versioned local state
 
 `--state FILE` opts into persistence of the validated active policy, one prior
@@ -141,7 +159,14 @@ disposable synchronized `src/` tree. See `docs/L1-v0.3-memory-state.md`.
   identity, and held-out smoke test.
 - `make evaluation-v05-heldout EVAL_REPETITIONS=100` — preregistered V0.5
   four-controller held-out comparison.
-- Observe `memory_gen`, `cpu_extra`, and `io_extra` in `l1_monitor` output.
+- `make evaluation-v06-ci` — bounded outcome-feedback development, training,
+  manifest-identity, and sanitizer-compatible held-out smoke test.
+- `make evaluation-v06-heldout EVAL_REPETITIONS=100` — preregistered V0.6
+  forecast and unchanged-action comparison.
+- `make shadow-bench` — repeated shadow hot-path and complete Linux
+  observation-path timing/RSS measurement.
+- Observe `memory_gen`, `self_cpu_extra`, `self_io_extra`, `shadow_mask`,
+  feedback status, and shadow offsets in `l1_monitor` output.
 - Program must run as `lab`, without `sudo`.
 
 **Important:** the live benchmark measures observer/controller overhead, not
@@ -156,26 +181,36 @@ adaptation, but regressed I/O misses and total loss versus tuned fixed. It is
 explicitly a no-go for actuation. See `docs/L1-v0.5-evaluation-plan.md` and
 `docs/L1-v0.5-validation.md`.
 
+The V0.6 held-out result is also negative: the shadow learner's forecasts tied
+the tuned static predictor on every held-out scenario. See
+`docs/L1-v0.6-evaluation-plan.md` and `docs/L1-v0.6-validation.md`.
+
 ## Components
 
 ```
 l1.h             Fixed memory/policy/observation interface
 l1_core.c        Deterministic memory-based decision engine + slow self-change
 l1_linux.c       Read-only Linux PSI adapter
+l1_shadow.h/.c   Fixed-size delayed-outcome shadow learner
 l1_policy.c      Strict L2-style behavior-memory proposal parser
 l1_state.c       Versioned CRC state, atomic persistence and safe recovery
 l1_main.c        Monitor, monotonic clock adapter, policy/state loop
 l1_test.c        Policy, fallback, adaptation, parser and rollback tests
 l1_trace_test.c  Synthetic traces with known per-sample decisions
 l1_state_test.c  Persistence corruption/recovery/permission tests
+l1_shadow_test.c Causal feedback, reset/saturation, unchanged-action tests
 l1_bench.c       Fixed-vs-L1 core and observation-to-decision benchmark
+l1_shadow_bench.c Shadow hot-path and complete observation benchmark
 l1_replay.c      Labeled fixed-memory vs bounded-adaptive experiment
 evaluation/l1_evaluate.c  Seeded train/held-out three-controller evaluator
 evaluation/l1_evaluate_v05.c  Frozen four-controller risk-aware evaluator
+evaluation/l1_evaluate_v06.c  Frozen forecast/action shadow evaluator
 evaluation/run_ci.sh  Bounded CI evaluation command
 evaluation/run_ci_v05.sh  Bounded V0.5 CI evaluation command
+evaluation/run_ci_v06.sh  Bounded V0.6 CI evaluation command
 evaluation_args_test.sh  Evaluator CLI, checksum, and training-selection tests
 evaluation_v05_args_test.sh  V0.5 checksum and manifest-identity tests
+evaluation_v06_args_test.sh  V0.6 checksum and manifest-identity tests
 benchmark_args_test.sh  Benchmark CLI negative tests
 run_benchmarks.sh Repeated guest benchmark command
 run_replays.sh   Repeated deterministic replay command
