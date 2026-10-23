@@ -117,3 +117,24 @@ forecast remained identical to the tuned static predictor and Brier
 improvement was 0%. V0.6 therefore remains read-only research and is not
 eligible for action coupling. See `L1-v0.6-evaluation-plan.md` and
 `L1-v0.6-validation.md`.
+
+## Level 1 v0.7 workload-evidence boundary
+
+V0.7 adds evidence capture and diagnostics, not another learner. An explicitly
+invoked Debian recorder reads existing PSI files and writes a finite,
+checksummed, mode-0600 trace only to a caller-selected guest-local path outside
+synchronized source. Its schema excludes wall time, identity, process, command,
+network, and credential data. It never starts a workload, uploads data, writes
+PSI triggers, or changes resource controls.
+
+The new synthetic generator consumes a dedicated truth stream so event class,
+timing, duration, overlaps, regime boundaries, and faults vary across seeds.
+Streaming evaluation compares both the live `800/40/150` and historical
+`2000/75/600` forecast thresholds while keeping the V0.6 learner, L1 decisions,
+and V1/V2 persistence unchanged. Offline truth is unavailable to runtime
+learning.
+
+The diagnostic machinery passed its synthetic, memory, and unchanged-action
+gates, but the recorder exceeded its frozen CPU/sample budget. V0.7 is therefore
+`DIAGNOSTICS_NO_GO`; V0.6 prediction and action coupling remain NO-GO. See
+`L1-v0.7-evaluation-plan.md` and `L1-v0.7-validation.md`.
