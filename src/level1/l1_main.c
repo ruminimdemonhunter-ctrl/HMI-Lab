@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "l1.h"
+#include "l1_shadow.h"
 
 #include <errno.h>
 #include <inttypes.h>
@@ -64,7 +65,9 @@ int main(int argc, char **argv) {
         }
     }
     L1Core core;
+    L1Shadow shadow;
     l1_init(&core);
+    l1_shadow_init(&shadow, l1_default_forecast_thresholds());
     if (state_file != NULL) {
         char error[128];
         if (l1_state_load(state_file, &core, error, sizeof(error))) {
@@ -74,13 +77,14 @@ int main(int argc, char **argv) {
             fprintf(stderr, "L1: state not recovered (%s); using safe defaults\n", error);
         }
     }
-    fprintf(stderr, "HMI L1 v0.5: READ-ONLY resource advisory mode; no hardware / OS controls\n");
+    fprintf(stderr, "HMI L1 v0.6: READ-ONLY advisory + shadow forecast; no hardware / OS controls\n");
     for (unsigned long i = 0; samples == 0 || i < samples; ++i) {
         /* A file is only an L2-style memory proposal, not directly writable core memory.
            For live use L2 must publish a complete file via atomic rename. */
         bool state_dirty = i % 5 == 0 && maybe_load(&core, policy_file);
         L1Observation obs;
-        bool ok = l1_read_linux_observation(&obs);
+        L1PressureCounters counters;
+        bool ok = l1_read_linux_sample(&obs, &counters);
         uint64_t observed_at_ms = 0;
         bool clock_ok = monotonic_ms(&observed_at_ms);
         ok = ok && clock_ok;
@@ -88,6 +92,8 @@ int main(int argc, char **argv) {
         uint8_t previous_cpu_extra = core.cpu_debounce_extra;
         uint8_t previous_io_extra = core.io_debounce_extra;
         L1Action action = l1_step_at(&core, obs, observed_at_ms);
+        L1ShadowStep shadow_step = l1_shadow_step_at(
+            &shadow, obs, counters, observed_at_ms);
         if (core.cpu_debounce_extra != previous_cpu_extra ||
             core.io_debounce_extra != previous_io_extra) {
             state_dirty = true;
@@ -100,10 +106,15 @@ int main(int argc, char **argv) {
             }
         }
         if (ok) {
-            printf("sample=%lu cpu_some=%.2f%% mem_full=%.2f%% io_full=%.2f%% action=%s memory_gen=%" PRIu32 " self_cpu_extra=%u self_io_extra=%u\n",
+            printf("sample=%lu cpu_some=%.2f%% mem_full=%.2f%% io_full=%.2f%% action=%s memory_gen=%" PRIu32 " self_cpu_extra=%u self_io_extra=%u shadow_mask=%u feedback=%s shadow_offsets=%d/%d/%d\n",
                 i + 1, obs.cpu_some_bp / 100.0, obs.memory_full_bp / 100.0,
                 obs.io_full_bp / 100.0, l1_action_name(action), core.policy.generation,
-                core.cpu_debounce_extra, core.io_debounce_extra);
+                core.cpu_debounce_extra, core.io_debounce_extra,
+                shadow.pending ? shadow.pending_prediction.positive_mask : 0,
+                shadow_step.feedback_ready ? "ready" : "pending",
+                shadow.offset[L1_FORECAST_CPU],
+                shadow.offset[L1_FORECAST_MEMORY],
+                shadow.offset[L1_FORECAST_IO]);
         } else {
             printf("sample=%lu telemetry=INVALID action=HOLD\n", i + 1);
         }

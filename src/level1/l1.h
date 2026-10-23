@@ -13,6 +13,14 @@ typedef struct {
     bool valid;
 } L1Observation;
 
+/* Read-only cumulative Linux PSI stall counters, sampled outside the core. */
+typedef struct {
+    uint64_t cpu_some_total_us;
+    uint64_t memory_full_total_us;
+    uint64_t io_full_total_us;
+    bool valid;
+} L1PressureCounters;
+
 typedef enum {
     L1_HOLD = 0,
     L1_PREFER_INTERACTIVE = 1,
@@ -88,6 +96,9 @@ bool l1_state_load(const char *path, L1Core *core,
 
 /* Linux PSI adapter is OUTSIDE the deterministic L1 decision core. */
 bool l1_parse_psi_percent(const char *line, const char *category, uint16_t *bp);
+bool l1_parse_psi_sample(const char *line, const char *category,
+                         uint16_t *bp, uint64_t *total_us);
 bool l1_read_linux_observation(L1Observation *out);
+bool l1_read_linux_sample(L1Observation *out, L1PressureCounters *counters);
 
 #endif
