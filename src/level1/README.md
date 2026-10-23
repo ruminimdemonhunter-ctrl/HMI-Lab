@@ -214,6 +214,36 @@ user authorization naming its finite duration and guest-local destination.
 Raw traces remain ignored and are never uploaded automatically. See
 `docs/L1-v0.8-evaluation-plan.md` and `docs/L1-v0.8-validation.md`.
 
+## Transparent replay and human inspection
+
+V0.9 adds l1_inspect, a bounded read-only viewer that calls the existing
+l1_step_at() and l1_shadow_step_at() implementations directly. It never
+publishes an action other than the core's returned advisory action and never
+feeds viewer or shadow output back into the core. The independent reference
+runner verifies the action and all L1Core bytes after every row.
+
+    ./l1_inspect demo
+    ./l1_inspect demo overlap-priority --details 60
+    ./l1_inspect demo policy-rollback
+    ./l1_inspect trace /absolute/guest/path/example.l1trace \
+      --forecast-config live-default --details 20
+    ./l1_inspect trace /absolute/guest/path/example.l1trace \
+      --forecast-config v06-trained --details 20
+
+The threshold_hits field is an observable comparison against the displayed
+behavior memory, while reason is a bounded diagnostic summary of actual
+before/after core state. It is not a rewritten decision engine. Published and
+fixed actions are produced by separate real core instances; shadow_prediction
+is explicitly non-actionable. Trace mode validates the complete V1 file before
+replay, buffers at most 2,000 detail records, and verifies file identity and
+checksum again before output.
+
+make inspect-ci runs fixed action/checksum references, golden output, argument
+and equivalence tests. make inspect-bench generates a private synthetic
+maximum-row trace in /tmp, measures parser, core+shadow, formatting, complete
+CLI CPU and RSS, and removes the trace. It does not read PSI or create load.
+See docs/L1-human-acceptance.md.
+
 ## Components
 
 ```
@@ -234,6 +264,10 @@ l1_bench.c       Fixed-vs-L1 core and observation-to-decision benchmark
 l1_shadow_bench.c Shadow hot-path and complete observation benchmark
 l1_recorder_bench.c Deterministic complete recorder-path comparison
 l1_psi_bench.c   Non-recording live PSI read/parse profiler
+l1_demo.h/.c     Frozen seeded transparent-replay demonstration rows
+l1_inspect.c     Read-only action/shadow/fixed-controller replay viewer
+l1_inspect_test.c Independent expected-action and core-byte equivalence tests
+l1_inspect_bench.c Bounded parser/replay/format/CLI resource measurement
 l1_replay.c      Labeled fixed-memory vs bounded-adaptive experiment
 evaluation/l1_evaluate.c  Seeded train/held-out three-controller evaluator
 evaluation/l1_evaluate_v05.c  Frozen four-controller risk-aware evaluator

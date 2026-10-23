@@ -158,3 +158,24 @@ Recorder efficiency and real-evidence readiness have separate preregistered
 verdicts. Neither can revise the historical `DIAGNOSTICS`,
 `SHADOW_PREDICTION`, or `ACTION_COUPLING` NO-GO findings or authorize resource
 actuation. See `L1-v0.8-evaluation-plan.md` and `L1-v0.8-validation.md`.
+
+## Level 1 v0.9 transparent-replay boundary
+
+V0.9 adds an action-free inspection layer around the existing C11 core and
+shadow learner. Seeded demonstrations and verified V1 traces are passed to
+`l1_step_at()` and `l1_shadow_step_at()` without a replacement decision model.
+An observer-off reference core receives the same policy events, samples, and
+timestamps; its complete bytes and returned action must match after every row.
+
+Explanation fields expose observations, policy memory, confirmation state,
+fallback state, fixed-controller output, and shadow status. Threshold hits are
+descriptive context rather than a claim to reproduce the core's private choice
+logic. Shadow forecasts and delayed feedback are explicitly separated from the
+published advisory action.
+
+Private trace replay is bounded and read-only. The complete V1 checksum is
+validated before replay; details are capped; file identity and checksum are
+checked again before any buffered rows are printed. No trace, policy, state, OS
+control, workload, or hardware setting is written. Passing this milestone means
+only that the replay interface is ready for human assessment. Adaptation
+remains NO-GO and real resource benefit remains NOT_ESTABLISHED.
