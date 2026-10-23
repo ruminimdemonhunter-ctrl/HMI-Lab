@@ -33,6 +33,11 @@ static uint64_t milliseconds(struct timespec value) {
     return (uint64_t)value.tv_sec * 1000U + (uint64_t)value.tv_nsec / 1000000U;
 }
 
+static uint64_t timeval_nanoseconds(struct timeval value) {
+    return (uint64_t)value.tv_sec * UINT64_C(1000000000) +
+        (uint64_t)value.tv_usec * UINT64_C(1000);
+}
+
 static bool safe_parent(const char *path) {
     if (path == NULL || path[0] != '/') return false;
     char copy[4096], resolved[4096];
@@ -111,6 +116,8 @@ int main(int argc, char **argv) {
     ok = ok && write_hashed(file, &hash, &bytes,
         "columns=relative_ms,cpu_some_bp,memory_full_bp,io_full_bp,"
         "cpu_some_total_us,memory_full_total_us,io_full_total_us,valid,flags\n");
+    struct rusage usage_start;
+    if (getrusage(RUSAGE_SELF, &usage_start) != 0) ok = false;
     struct timespec start;
     if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) ok = false;
     uint64_t count = 0;
@@ -164,8 +171,15 @@ int main(int argc, char **argv) {
     }
     struct rusage usage;
     (void)getrusage(RUSAGE_SELF, &usage);
+    uint64_t cpu_start_ns = timeval_nanoseconds(usage_start.ru_utime) +
+        timeval_nanoseconds(usage_start.ru_stime);
+    uint64_t cpu_end_ns = timeval_nanoseconds(usage.ru_utime) +
+        timeval_nanoseconds(usage.ru_stime);
+    uint64_t cpu_ns = cpu_end_ns >= cpu_start_ns ?
+        cpu_end_ns - cpu_start_ns : 0;
     printf("TRACE_RECORDED,samples=%" PRIu64 ",bytes=%" PRIu64
-           ",checksum=%016" PRIx64 ",rss_kib=%ld\n",
-           count, bytes + (uint64_t)footer, hash, usage.ru_maxrss);
+           ",checksum=%016" PRIx64 ",cpu_ns_per_sample=%.3f,rss_kib=%ld\n",
+           count, bytes + (uint64_t)footer, hash,
+           count ? (double)cpu_ns / (double)count : 0.0, usage.ru_maxrss);
     return 0;
 }
