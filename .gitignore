@@ -8,12 +8,15 @@
 *.vdi
 # Compiled binaries
 /src/level1/l1_monitor
+/src/level1/l1_trace_record
+/src/level1/l1_diagnostics
 /src/level1/l1_test
 /src/level1/l1_trace_test
 /src/level1/l1_bench
 /src/level1/l1_shadow_bench
 /src/level1/l1_state_test
 /src/level1/l1_shadow_test
+/src/level1/l1_record_test
 /src/level1/l1_replay
 /src/level1/l1_evaluate
 /src/level1/l1_evaluate_v05
@@ -21,6 +24,8 @@
 *.eval.csv
 *.eval.policy
 *.eval.manifest
+*.l1trace
+*.l1trace.partial
 *.o
 *.obj
 *.exe
