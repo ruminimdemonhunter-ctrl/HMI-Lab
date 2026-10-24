@@ -2,7 +2,7 @@ name: Level 1 C11 validation
 
 on:
   push:
-    branches: [main, "feature/l1-v0.3-memory-stability", "feature/l1-v0.4-adaptive-evaluation", "feature/l1-v0.5-risk-aware-memory", "feature/l1-v0.6-outcome-feedback", "feature/l1-v0.7-workload-evidence", "feature/l1-v0.8-recorder-evidence", "feature/l1-v0.9-transparent-replay", "feature/l1-v1.0-real-psi-evidence", "feature/l1-v1.1-policy-boundary"]
+    branches: [main, "feature/l1-v0.3-memory-stability", "feature/l1-v0.4-adaptive-evaluation", "feature/l1-v0.5-risk-aware-memory", "feature/l1-v0.6-outcome-feedback", "feature/l1-v0.7-workload-evidence", "feature/l1-v0.8-recorder-evidence", "feature/l1-v0.9-transparent-replay", "feature/l1-v1.0-real-psi-evidence", "feature/l1-v1.1-policy-boundary", "feature/l1-rc0-offline-qualification"]
   pull_request:
     branches: [main]
 
@@ -17,34 +17,10 @@ jobs:
         working-directory: src/level1
     steps:
       - uses: actions/checkout@v4
-      - name: Build and unit tests
-        run: make clean all test
+      - name: Integrated RC0 CI qualification
+        run: make rc0-ci
       - name: Assertions survive NDEBUG
         run: make test-ndebug
-      - name: Deterministic replay acceptance
-        run: make clean all replay
-      - name: Bounded adaptive evaluation
-        run: make evaluation-ci
-      - name: Bounded risk-aware evaluation
-        run: make evaluation-v05-ci
-      - name: Bounded outcome-aware shadow evaluation
-        run: make evaluation-v06-ci
-      - name: Bounded workload-evidence diagnostics
-        run: make evaluation-v07-ci
-      - name: Bounded recorder benchmark smoke test
-        run: make recorder-bench-ci
-      - name: Transparent replay acceptance smoke test
-        run: make inspect-ci
-      - name: Bounded transparent replay resource smoke test
-        run: make inspect-bench-ci
-      - name: Offline PSI evidence analyzer smoke test
-        run: make evidence-ci
-      - name: Bounded offline evidence resource smoke test
-        run: make evidence-bench-ci
-      - name: Test-only proposal boundary
-        run: make proposal-ci
-      - name: Bounded proposal verifier resource smoke test
-        run: make proposal-bench-ci
 
   sanitizers:
     runs-on: ubuntu-latest

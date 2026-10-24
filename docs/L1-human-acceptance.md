@@ -1,45 +1,73 @@
-# HMI Level 1 human acceptance guide
+# HMI Level 1 RC0 human acceptance guide
+
+> **NOT YET RELEASED FOR PERSONAL ACCEPTANCE**
+>
+> This packet is complete for review, but personal assessment must not start
+> until RC0 is merged and an independent scientific reviewer approves the
+> exact RC0 commit.
 
 ## Scope and safety
 
-This packet is for personal review of the V0.9 read-only release candidate.
-L1 reports advisory actions; it does not apply them. The viewer does not write
-policies, state, traces, cgroups, scheduler settings, devices, firmware, or
-hardware. It does not generate CPU, memory, or I/O pressure.
+RC0 is a read-only engineering candidate. L1 publishes advisory actions; it
+does not apply them. The tools do not write policies, traces, cgroups,
+scheduler settings, devices, firmware or hardware and do not generate
+pressure. Shadow forecasts never alter the published action.
 
-The synthetic demonstrations are evidence that the existing compiled core is
-being replayed transparently. They are not evidence of resource savings or a
-successful learning algorithm. Historical scientific conclusions remain:
+Passing this packet does not demonstrate adaptive learning, production policy
+authorization or real resource savings. The frozen findings remain:
 
-- V0.8 recorder efficiency: GO; real evidence: INSUFFICIENT.
-- V0.7 diagnostics: NO_GO.
-- V0.6 shadow prediction and action coupling: NO_GO.
-- adaptation: NO_GO.
-- real resource benefit: NOT_ESTABLISHED.
+- V0.4/V0.5 adaptation: `NO_GO`.
+- V0.6 shadow prediction: `NO_GO`; action coupling: `NO_GO`.
+- V0.7 diagnostics: `NO_GO`.
+- V0.8 recorder efficiency: `GO`; real evidence: `INSUFFICIENT`.
+- V0.9 replay readiness: `GO`.
+- V1.0 evidence tooling: `GO`; real evidence: `INSUFFICIENT`; forecast
+  transfer: `UNDETERMINED`.
+- V1.1 proposal validation: `GO` only for the test boundary; production
+  authorization: `BLOCKED`; L2 deployment: `NOT_AUTHORIZED`.
+- Real resource benefit: `NOT_ESTABLISHED`.
 
-## Reproduce from Windows and Debian QEMU
+## Obtain the reviewed candidate
 
-From PowerShell in C:\Dev\Projects\HMI-Lab, confirm the VM is already running
-and deploy the current source:
+After a reviewed RC0 is integrated, use PowerShell from the Windows workspace:
 
-    git switch feature/l1-v0.9-transparent-replay
+    cd C:\Dev\Projects\HMI-Lab
+    git switch main
+    git pull --ff-only origin main
+
+For pre-merge PR review only, explicitly use the review branch and do not call
+it a release:
+
+    git switch feature/l1-rc0-offline-qualification
+
+Confirm the existing isolated Debian QEMU guest is already running, then:
+
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts\sync-source.ps1
     ssh -p 2222 lab@127.0.0.1
+
+These commands synchronize source into the guest. Keep a recoverable guest
+backup or snapshot according to the lab procedure before unrelated VM work;
+never put disks or backups in Git.
+
+## Reproduce engineering qualification
 
 Inside the Debian guest:
 
     cd /home/lab/hmi/src/level1
-    make clean all test
-    ./l1_inspect help
+    make rc0-ci
+    make rc0-qualification
+
+`rc0-ci` is finite and CI-sized. `rc0-qualification` is the sequential full
+suite, including sanitizers, frozen historical evaluations and synthetic
+86,400-row resource tests. It performs no long live capture. Expected terminal
+markers are `RC0_CI=PASS`, `RC0_QUALIFICATION_COMMANDS=PASS` and
+`V1_2_BENEFIT_EXPERIMENT=BLOCKED`.
+
+Stop if a command reports failure. Do not reinterpret a partial run as a pass.
+
+## Inspect actual L1 behavior
+
     ./l1_inspect demo --details 0
-
-No Windows configuration, service, device, firmware, scheduler, or resource
-setting is changed by these commands.
-
-## Review the demonstrations
-
-Run each detailed scenario:
-
     ./l1_inspect demo idle-noise
     ./l1_inspect demo rising-cpu
     ./l1_inspect demo urgent-memory
@@ -51,99 +79,66 @@ Run each detailed scenario:
     ./l1_inspect demo policy-rollback
     ./l1_inspect demo shadow-prediction
 
-Read each row as follows:
+Interpret the output as follows:
 
-- cpu_bp, memory_bp, and io_bp are observed basis points.
-- threshold_hits is a direct comparison against the displayed policy memory;
-  it is context, not a duplicate decision engine.
-- published is the advisory action returned by l1_step_at().
-- fixed is a separate l1_step_at() instance with adaptation disabled.
-- candidate and streak fields expose actual confirmation state.
-- reason summarizes actual before/after core state and explicitly names invalid
-  or regressing-time fallback.
-- static_live is the compiled 800/40/150 fixed forecast.
-- static_v06 is the historical 2000/75/600 fixed forecast.
-- shadow_prediction and feedback come only from l1_shadow_step_at(). They never
-  change published.
-- observer_equivalence must be PASS and observer_mismatches must be zero.
+- `published` is the advisory action returned by the real `l1_step_at()` core.
+- `fixed` is a separate `l1_step_at()` reference with adaptation disabled.
+- `candidate`, streaks and `reason` expose actual core state.
+- `static_live` and `static_v06` are forecast references, not actions.
+- `shadow_prediction` and feedback come from `l1_shadow_step_at()` and cannot
+  change `published`.
+- `observer_equivalence` must be `PASS`; mismatches must be zero.
 
-Expected safety landmarks:
+Expected landmarks are delayed CPU confirmation, immediate eligible memory
+protection, I/O deferral, memory-over-I/O-over-CPU priority, HOLD on invalid or
+regressing observations, bounded proposal rejection/rollback and causally
+delayed shadow feedback. A different result is a stop condition.
 
-- rising-cpu recommends PREFER_INTERACTIVE only after confirmation.
-- urgent-memory recommends PROTECT_MEMORY.
-- sustained-io recommends DEFER_IO.
-- overlap-priority progresses through CPU, I/O, then memory priority.
-- invalid and regressing telemetry immediately publish HOLD.
-- policy-rollback accepts generation 1, rejects an out-of-bounds memory
-  threshold, then rolls back default behavior as generation 2.
-- shadow-prediction reports evaluated feedback separately while published
-  remains an action from the core.
-
-## Persistence, corruption, and restart evidence
-
-The viewer never creates or changes persistent state. Exercise the independently
-tested V1/V2 migration, restart, CRC corruption, permission, atomic replacement,
-and recovery paths with:
+Persistence and authorization evidence can be reviewed separately:
 
     ./l1_state_test
-    ./l1_test
+    ./l1_proposal_test
+    ./l1_rc0_test
 
-Expected final lines begin with PASS. A corrupt or unsupported state must fall
-back safely; it must not be silently reinterpreted. V2 remains 72 bytes.
+The proposal verifier is test-only and is not production authentication. CRC
+state integrity is not a trust anchor. Rejection must leave current core bytes
+unchanged; a corrupt state must recover to defaults/HOLD; V2 remains 72 bytes.
 
-## Optional private V1 trace
+## Optional private trace
 
 Only use an already-recorded guest-local V1 trace that you explicitly choose.
-Do not copy private traces into the source tree or upload them.
+Do not copy it into the synchronized source tree or upload it:
 
-    ./l1_inspect trace /absolute/guest/path/example.l1trace \
-      --forecast-config live-default --details 20
-    ./l1_inspect trace /absolute/guest/path/example.l1trace \
-      --forecast-config v06-trained --details 20
+    ./l1_inspect trace /absolute/guest/path/example.l1trace --forecast-config live-default --details 20
+    ./l1_inspect trace /absolute/guest/path/example.l1trace --forecast-config v06-trained --details 20
 
-The tool rejects relative paths, parent-directory components, non-regular
-files, malformed data, bad checksums, excessive rows/bytes, and files that
-change between validation and replay. It prints no rows until both bounded
-passes succeed. FNV-1a detects accidental corruption; it is not authentication.
-
-## Engineering and resource checks
-
-    make test-ndebug
-    ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 make sanitize
-    make clean all replay
-    make evaluation-ci evaluation-v05-ci evaluation-v06-ci evaluation-v07-ci
-    make recorder-bench-ci
-    make inspect-bench
-
-The full inspect benchmark creates only a synthetic temporary V1 trace under
-/tmp and removes it on normal exit or signals. The optimized CLI RSS acceptance
-limit is 8,192 KiB. Parser, core-plus-shadow, formatting, complete CLI CPU, and
-CLI RSS are reported separately. Sanitizer timing and RSS are correctness
-evidence, not optimized-budget evidence.
+The checksum detects accidental corruption, not provenance or authentication.
+Private traces lack independently established latent truth and cannot establish
+causal benefit. A new research-length capture requires separate authorization
+with an exact duration and guest-local output path.
 
 ## Personal scorecard
 
-Record one of clear, unclear, or unacceptable for each item:
+Record `clear`, `unclear` or `unacceptable`, with free-form notes:
 
 | Question | Rating | Notes |
 |---|---|---|
-| Can you identify the published action on every row? | | |
-| Are fallback and pending confirmation understandable? | | |
-| Is memory over I/O over CPU priority visible? | | |
-| Is shadow prediction clearly separate from action? | | |
-| Is fixed-controller comparison understandable? | | |
-| Is policy rejection and rollback understandable? | | |
-| Does output remain readable at the chosen detail limit? | | |
-| Are limitations and missing real-benefit evidence explicit? | | |
+| Can you identify every published advisory action? | | |
+| Are HOLD fallback and confirmation delay understandable? | | |
+| Is memory > I/O > CPU priority visible? | | |
+| Is shadow prediction unmistakably separate from action? | | |
+| Is the fixed-controller comparison understandable? | | |
+| Are rejection, corruption recovery and rollback understandable? | | |
+| Are production-authorization limits explicit? | | |
+| Are the negative scientific findings and missing benefit evidence explicit? | | |
 
-Proposed behavior changes should name the scenario, row, observed values,
-current published action, desired advisory action, and safety rationale. A
-request does not authorize changing compiled priority, actuation, L2/L3, held-
-out data, or historical findings.
+For a proposed behavior change, record the scenario, row, observations,
+current published action, desired advisory action and safety rationale. A note
+does not authorize modifying priority, state formats, L2/L3 or actuation.
 
 ## Stop and recovery
 
-The viewer is finite and foreground-only. Press Ctrl+C to stop it. It launches
-no service and leaves no background worker. The benchmark installs a cleanup
-trap for its synthetic /tmp files. If any command reports FAIL, preserve the
-output, stop acceptance review, and do not treat the candidate as ready.
+All viewers and runners are finite foreground processes. Press Ctrl+C to stop;
+they create no daemon or scheduled task. Benchmark temporary files are removed
+on normal exit and handled signals. Preserve failure output and the exact Git
+SHA. Do not proceed with personal assessment after a failed gate.
