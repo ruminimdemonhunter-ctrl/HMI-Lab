@@ -18,7 +18,8 @@ def update_hash(value: int, data: bytes) -> int:
 
 def main() -> int:
     if len(sys.argv) not in (3, 4):
-        print("usage: generate_evidence_trace.py OUTPUT ROWS [clean|faults|no-positive]",
+        print("usage: generate_evidence_trace.py OUTPUT ROWS "
+              "[clean|faults|no-positive|saturation]",
               file=sys.stderr)
         return 2
     output = pathlib.Path(sys.argv[1])
@@ -29,9 +30,9 @@ def main() -> int:
     if rows < 2 or rows > MAX_ROWS or not output.is_absolute():
         return 2
     profile = sys.argv[3] if len(sys.argv) == 4 else "clean"
-    if profile not in ("clean", "faults", "no-positive"):
+    if profile not in ("clean", "faults", "no-positive", "saturation"):
         return 2
-    if profile == "faults" and rows < 4000:
+    if profile in ("faults", "saturation") and rows < 4000:
         return 2
 
     header = (
@@ -56,11 +57,13 @@ def main() -> int:
             if index:
                 prior_high = ((((index - 1) * 1000) // 300_000) & 1) != 0
                 rates = (1000, 100, 300) if prior_high else (100, 2, 10)
-                if profile == "no-positive":
+                if profile in ("no-positive", "saturation"):
                     rates = (100, 2, 10)
                 for class_id, rate_bp in enumerate(rates):
                     totals[class_id] += rate_bp * 100
-            if high:
+            if profile == "saturation":
+                observed = (3000, 120, 800)
+            elif high:
                 observed = (1900, 70, 580)
             else:
                 observed = (900, 45, 180)

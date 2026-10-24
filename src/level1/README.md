@@ -260,6 +260,10 @@ for the final evaluation segment. It separately compares static and unchanged
 adaptive forecasts for `live-default=800/40/150` and
 `v06-trained=2000/75/600`. Published actions come from the existing
 `l1_step_at()` and are compared byte-for-byte with an observer-free reference;
+the `--source` value is only a caller declaration. Numerical coverage is
+reported separately, and the CLI cannot establish capture authorization or
+independent provenance. A caller-declared real trace therefore remains
+`REAL_EVIDENCE:INSUFFICIENT` until provenance is reviewed outside the tool.
 forecasts come only from `l1_fixed_prediction()` and `l1_shadow_step_at()`.
 
 `make evidence-ci` generates bounded synthetic fixtures for split, feedback,

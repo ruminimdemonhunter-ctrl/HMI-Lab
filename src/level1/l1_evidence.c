@@ -23,9 +23,16 @@ typedef struct {
     uint64_t tp, tn, fp, fn;
     uint64_t adaptive_tp, adaptive_tn, adaptive_fp, adaptive_fn;
     uint64_t changed, improved, worsened;
-    uint64_t offset_windows, updates;
-    uint64_t static_miss_delay_sum_ms, static_miss_delay_max_ms;
-    uint64_t adaptive_miss_delay_sum_ms, adaptive_miss_delay_max_ms;
+    uint64_t offset_windows, saturated_offset_windows, saturation_attempts;
+    uint64_t updates;
+    uint64_t static_fn_feedback_latency_sum_ms;
+    uint64_t static_fn_feedback_latency_max_ms;
+    uint64_t adaptive_fn_feedback_latency_sum_ms;
+    uint64_t adaptive_fn_feedback_latency_max_ms;
+    uint64_t first_material_change_ms;
+    uint64_t first_material_change_elapsed_ms;
+    uint64_t first_material_change_window;
+    bool first_material_change_seen;
 } ClassMetrics;
 
 typedef struct {
@@ -120,6 +127,41 @@ static bool prediction_correct(bool prediction, bool outcome) {
     return prediction == outcome;
 }
 
+static bool adaptation_gate_ready(const L1Shadow *before, unsigned c,
+                                  uint64_t now_ms, uint16_t evaluated) {
+    uint32_t valid = before->valid_samples[c];
+    if (valid < UINT32_MAX) valid++;
+    return valid >= L1_SELF_ADAPT_MIN_SAMPLES && before->gate_started[c] &&
+        now_ms - before->gate_started_ms[c] >=
+            L1_SELF_ADAPT_MIN_INTERVAL_MS &&
+        evaluated >= L1_FORECAST_MIN_WINDOWS;
+}
+
+static void count_saturation_attempts(EvidenceRun *run,
+                                      const L1Shadow *before,
+                                      const L1Feedback *feedback,
+                                      uint64_t now_ms) {
+    for (unsigned c = 0; c < CLASS_COUNT; ++c) {
+        uint8_t bit = (uint8_t)(1U << c);
+        bool prediction =
+            (before->pending_prediction.positive_mask & bit) != 0;
+        bool outcome = (feedback->positive_mask & bit) != 0;
+        uint16_t false_alarms = before->false_alarms[c];
+        uint16_t misses = before->misses[c];
+        uint16_t evaluated = before->evaluated_windows[c];
+        if (prediction && !outcome && false_alarms < UINT16_MAX)
+            false_alarms++;
+        if (!prediction && outcome && misses < UINT16_MAX) misses++;
+        if (evaluated < UINT16_MAX) evaluated++;
+        if (!adaptation_gate_ready(before, c, now_ms, evaluated)) continue;
+        if ((before->offset[c] == L1_FORECAST_MAX_OFFSET &&
+             (uint32_t)false_alarms >= (uint32_t)misses + 2U) ||
+            (before->offset[c] == -L1_FORECAST_MAX_OFFSET &&
+             (uint32_t)misses >= (uint32_t)false_alarms + 2U))
+            run->classes[c].saturation_attempts++;
+    }
+}
+
 static void score_feedback(EvidenceRun *run, L1Feedback feedback,
                            uint64_t now_ms) {
     if (!run->pending) return;
@@ -141,17 +183,24 @@ static void score_feedback(EvidenceRun *run, L1Feedback feedback,
                   &metrics->adaptive_tn, &metrics->adaptive_fp,
                   &metrics->adaptive_fn);
         if (!static_prediction && outcome) {
-            metrics->static_miss_delay_sum_ms += elapsed;
-            if (elapsed > metrics->static_miss_delay_max_ms)
-                metrics->static_miss_delay_max_ms = elapsed;
+            metrics->static_fn_feedback_latency_sum_ms += elapsed;
+            if (elapsed > metrics->static_fn_feedback_latency_max_ms)
+                metrics->static_fn_feedback_latency_max_ms = elapsed;
         }
         if (!adaptive_prediction && outcome) {
-            metrics->adaptive_miss_delay_sum_ms += elapsed;
-            if (elapsed > metrics->adaptive_miss_delay_max_ms)
-                metrics->adaptive_miss_delay_max_ms = elapsed;
+            metrics->adaptive_fn_feedback_latency_sum_ms += elapsed;
+            if (elapsed > metrics->adaptive_fn_feedback_latency_max_ms)
+                metrics->adaptive_fn_feedback_latency_max_ms = elapsed;
         }
         if (run->pending_changed & bit) {
             metrics->changed++;
+            if (!metrics->first_material_change_seen) {
+                metrics->first_material_change_seen = true;
+                metrics->first_material_change_ms = now_ms;
+                metrics->first_material_change_elapsed_ms =
+                    now_ms - run->first_ms;
+                metrics->first_material_change_window = run->scored;
+            }
             bool fixed_right = prediction_correct(static_prediction, outcome);
             bool adaptive_right = prediction_correct(adaptive_prediction,
                                                       outcome);
@@ -197,8 +246,11 @@ static void run_step(EvidenceRun *run, const L1TraceRow *row) {
     run->shadow_resets += run->shadow.reset_count - before.reset_count;
     if (invalid_delta || gap_delta || reset_delta) run->pending = false;
 
-    if (step.feedback_ready) score_feedback(run, step.feedback,
-                                            row->relative_ms);
+    if (step.feedback_ready) {
+        count_saturation_attempts(run, &before, &step.feedback,
+                                  row->relative_ms);
+        score_feedback(run, step.feedback, row->relative_ms);
+    }
     for (unsigned c = 0; c < CLASS_COUNT; ++c) {
         run->classes[c].updates +=
             run->shadow.updates[c] - before.updates[c];
@@ -215,8 +267,12 @@ static void run_step(EvidenceRun *run, const L1TraceRow *row) {
         run->pending_changed = (uint8_t)(fixed.positive_mask ^
                                          step.prediction.positive_mask);
         run->pending_started_ms = row->relative_ms;
-        for (unsigned c = 0; c < CLASS_COUNT; ++c)
+        for (unsigned c = 0; c < CLASS_COUNT; ++c) {
             if (run->shadow.offset[c] != 0) run->classes[c].offset_windows++;
+            if (run->shadow.offset[c] == L1_FORECAST_MAX_OFFSET ||
+                run->shadow.offset[c] == -L1_FORECAST_MAX_OFFSET)
+                run->classes[c].saturated_offset_windows++;
+        }
     }
 }
 
@@ -254,7 +310,8 @@ static void print_class(const char *split, const char *config, unsigned c,
     char fixed_specificity[24], adaptive_specificity[24];
     char fixed_precision[24], adaptive_precision[24];
     char fixed_brier[24], adaptive_brier[24];
-    char fixed_delay[24], adaptive_delay[24];
+    char fixed_latency[24], adaptive_latency[24];
+    char first_ms[24], first_elapsed[24], first_window[24];
     ratio_text(prevalence, sizeof(prevalence), positives, static_n);
     ratio_text(fixed_recall, sizeof(fixed_recall), m->tp, positives);
     ratio_text(adaptive_recall, sizeof(adaptive_recall), m->adaptive_tp,
@@ -268,10 +325,22 @@ static void print_class(const char *split, const char *config, unsigned c,
     ratio_text(fixed_brier, sizeof(fixed_brier), m->fp + m->fn, static_n);
     ratio_text(adaptive_brier, sizeof(adaptive_brier),
                m->adaptive_fp + m->adaptive_fn, adaptive_n);
-    ratio_text(fixed_delay, sizeof(fixed_delay),
-               m->static_miss_delay_sum_ms, m->fn);
-    ratio_text(adaptive_delay, sizeof(adaptive_delay),
-               m->adaptive_miss_delay_sum_ms, m->adaptive_fn);
+    ratio_text(fixed_latency, sizeof(fixed_latency),
+               m->static_fn_feedback_latency_sum_ms, m->fn);
+    ratio_text(adaptive_latency, sizeof(adaptive_latency),
+               m->adaptive_fn_feedback_latency_sum_ms, m->adaptive_fn);
+    if (m->first_material_change_seen) {
+        (void)snprintf(first_ms, sizeof(first_ms), "%" PRIu64,
+                       m->first_material_change_ms);
+        (void)snprintf(first_elapsed, sizeof(first_elapsed), "%" PRIu64,
+                       m->first_material_change_elapsed_ms);
+        (void)snprintf(first_window, sizeof(first_window), "%" PRIu64,
+                       m->first_material_change_window);
+    } else {
+        (void)snprintf(first_ms, sizeof(first_ms), "N/A");
+        (void)snprintf(first_elapsed, sizeof(first_elapsed), "N/A");
+        (void)snprintf(first_window, sizeof(first_window), "N/A");
+    }
     printf("CLASS split=%s config=%s class=%s scored=%" PRIu64
            " positives=%" PRIu64 " negatives=%" PRIu64
            " static_tp=%" PRIu64 " static_tn=%" PRIu64
@@ -282,20 +351,28 @@ static void print_class(const char *split, const char *config, unsigned c,
            " static_specificity=%s adaptive_specificity=%s"
            " static_precision=%s adaptive_precision=%s"
            " static_brier=%s adaptive_brier=%s"
-           " static_miss_delay_mean_ms=%s static_miss_delay_max_ms=%" PRIu64
-           " adaptive_miss_delay_mean_ms=%s"
-           " adaptive_miss_delay_max_ms=%" PRIu64
+           " static_false_negative_feedback_latency_mean_ms=%s"
+           " static_false_negative_feedback_latency_max_ms=%" PRIu64
+           " adaptive_false_negative_feedback_latency_mean_ms=%s"
+           " adaptive_false_negative_feedback_latency_max_ms=%" PRIu64
            " updates=%" PRIu64 " offset_windows=%" PRIu64
+           " saturated_offset_windows=%" PRIu64
+           " saturation_attempts=%" PRIu64
            " changed=%" PRIu64 " improved=%" PRIu64
-           " worsened=%" PRIu64 "\n",
+           " worsened=%" PRIu64
+           " first_scored_material_change_ms=%s"
+           " first_scored_material_change_elapsed_ms=%s"
+           " first_scored_material_change_window=%s\n",
            split, config, class_names[c], static_n, positives, negatives,
            m->tp, m->tn, m->fp, m->fn, m->adaptive_tp, m->adaptive_tn,
            m->adaptive_fp, m->adaptive_fn, prevalence, fixed_recall,
            adaptive_recall, fixed_specificity, adaptive_specificity,
            fixed_precision, adaptive_precision, fixed_brier, adaptive_brier,
-           fixed_delay, m->static_miss_delay_max_ms, adaptive_delay,
-           m->adaptive_miss_delay_max_ms, m->updates, m->offset_windows,
-           m->changed, m->improved, m->worsened);
+           fixed_latency, m->static_fn_feedback_latency_max_ms,
+           adaptive_latency, m->adaptive_fn_feedback_latency_max_ms,
+           m->updates, m->offset_windows, m->saturated_offset_windows,
+           m->saturation_attempts, m->changed, m->improved, m->worsened,
+           first_ms, first_elapsed, first_window);
 }
 
 static void print_run(const char *split, const char *config,
@@ -338,7 +415,7 @@ static bool run_accounting(const EvidenceRun *run) {
     return true;
 }
 
-static bool evidence_ready(const EvidenceAnalysis *analysis) {
+static bool numerical_coverage_ready(const EvidenceAnalysis *analysis) {
     for (unsigned config = 0; config < CONFIG_COUNT; ++config) {
         const EvidenceRun *run = &analysis->evaluation[config];
         if (!run_accounting(run) || run->action_mismatches != 0 ||
@@ -420,7 +497,9 @@ static int analyze(const char *path, const char *source) {
             analysis.evaluation[c].fallback_violations == 0;
     }
     puts("HMI_L1_EVIDENCE_V1 mode=read-only learning=unchanged action_coupling=none");
-    printf("TRACE source=%s source_claim=caller-declared verification=complete schema=V1"
+    printf("TRACE source=%s source_claim=caller-declared"
+           " trace_validation=complete provenance_verification=not-performed"
+           " schema=V1"
            " two_pass_identity=matched rows=%" PRIu64 " bytes=%" PRIu64
            " cadence_ms=%u checksum=%016" PRIx64 "\n",
            source, verified.count, verified.bytes, verified.cadence_ms,
@@ -438,19 +517,23 @@ static int analyze(const char *path, const char *source) {
            " sizeof_l1core=%zu sizeof_l1shadow=%zu state_v2_bytes=72\n",
            accounting ? "PASS" : "FAIL", equivalence ? "PASS" : "FAIL",
            sizeof(L1Core), sizeof(L1Shadow));
-    bool coverage = evidence_ready(&analysis);
+    bool coverage = numerical_coverage_ready(&analysis);
     printf("COVERAGE evaluation_windows=%" PRIu64
            " minimum=30 feedback_eligibility_required=0.800000"
            " class_min_positive=5 class_min_negative=5 gate=%s\n",
            analysis.evaluation[0].scored, coverage ? "PASS" : "FAIL");
     printf("EVIDENCE_TOOLING:%s\n",
            accounting && equivalence ? "GO" : "NO_GO");
-    if (!real)
+    if (!real) {
+        puts("CAPTURE_PROVENANCE status=not-applicable"
+             " source=synthetic-fixture");
         puts("REAL_EVIDENCE:INSUFFICIENT reason=synthetic-fixture-only");
-    else
-        printf("REAL_EVIDENCE:%s\n",
-               coverage && accounting && equivalence ? "READY" :
-               "INSUFFICIENT");
+    } else {
+        puts("CAPTURE_PROVENANCE status=unverified"
+             " source=caller-declared authorization=unverified"
+             " independent_review=required");
+        puts("REAL_EVIDENCE:INSUFFICIENT reason=unverified-provenance");
+    }
     puts("FORECAST_TRANSFER:UNDETERMINED\nADAPTATION:NO_GO\n"
          "ACTION_COUPLING:NO_GO\nREAL_RESOURCE_BENEFIT:NOT_ESTABLISHED");
     return accounting && equivalence ? EXIT_SUCCESS : EXIT_FAILURE;
