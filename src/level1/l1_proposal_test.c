@@ -223,6 +223,14 @@ static void test_authorization_and_clone(void) {
                            L1_PROPOSAL_AUTH_DENIED);
     verifier.allow = true;
 
+    L1Core alias_before = current;
+    L1ProposalStatus alias_status = L1_PROPOSAL_OK;
+    CHECK(!l1_proposal_test_apply_clone(
+        &current, (const uint8_t *)canonical, sizeof(canonical) - 1U,
+        exact_verifier, &verifier, &current, &alias_status));
+    CHECK(alias_status == L1_PROPOSAL_INVALID_ARGUMENT);
+    CHECK(memcmp(&current, &alias_before, sizeof(current)) == 0);
+
     char rejected[512];
     size_t rejected_length = make_proposal(
         rejected, sizeof(rejected), 1, 0, 1, 499, 100, 500, 3);
@@ -333,6 +341,7 @@ static void test_filesystem_boundary(void) {
     char directory[] = "/tmp/hmi-l1-proposal-XXXXXX";
     CHECK(mkdtemp(directory) != NULL);
     char path[256], link_path[256], replacement[256], oversized[256];
+    char nested[256], nested_path[256], parent_link[256], linked_path[256];
     CHECK((size_t)snprintf(path, sizeof(path), "%s/proposal", directory) <
           sizeof(path));
     CHECK((size_t)snprintf(link_path, sizeof(link_path), "%s/link", directory) <
@@ -341,6 +350,14 @@ static void test_filesystem_boundary(void) {
           sizeof(replacement));
     CHECK((size_t)snprintf(oversized, sizeof(oversized), "%s/large", directory) <
           sizeof(oversized));
+    CHECK((size_t)snprintf(nested, sizeof(nested), "%s/nested", directory) <
+          sizeof(nested));
+    CHECK((size_t)snprintf(nested_path, sizeof(nested_path), "%s/proposal",
+                           nested) < sizeof(nested_path));
+    CHECK((size_t)snprintf(parent_link, sizeof(parent_link), "%s/parent-link",
+                           directory) < sizeof(parent_link));
+    CHECK((size_t)snprintf(linked_path, sizeof(linked_path), "%s/proposal",
+                           parent_link) < sizeof(linked_path));
     write_file(path, canonical, sizeof(canonical) - 1U);
     uint8_t bytes[L1_PROPOSAL_MAX_BYTES];
     size_t length = 0;
@@ -348,6 +365,15 @@ static void test_filesystem_boundary(void) {
     CHECK(l1_proposal_read_file(path, bytes, &length, &status));
     CHECK(length == sizeof(canonical) - 1U);
     CHECK(memcmp(bytes, canonical, length) == 0);
+
+    CHECK(mkdir(nested, 0700) == 0);
+    write_file(nested_path, canonical, sizeof(canonical) - 1U);
+    CHECK(l1_proposal_read_file(nested_path, bytes, &length, &status));
+    CHECK(length == sizeof(canonical) - 1U);
+    CHECK(memcmp(bytes, canonical, length) == 0);
+    CHECK(symlink("nested", parent_link) == 0);
+    CHECK(!l1_proposal_read_file(linked_path, bytes, &length, &status));
+    CHECK(status == L1_PROPOSAL_FILE_TYPE);
 
     CHECK(symlink(path, link_path) == 0);
     CHECK(!l1_proposal_read_file(link_path, bytes, &length, &status));
@@ -392,7 +418,10 @@ static void test_filesystem_boundary(void) {
 
     CHECK(unlink(path) == 0);
     CHECK(unlink(link_path) == 0);
+    CHECK(unlink(parent_link) == 0);
+    CHECK(unlink(nested_path) == 0);
     CHECK(unlink(oversized) == 0);
+    CHECK(rmdir(nested) == 0);
     CHECK(rmdir(directory) == 0);
 }
 

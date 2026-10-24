@@ -173,15 +173,62 @@ bool l1_proposal_check(const L1Core *current, const L1Proposal *proposal,
 }
 
 static bool safe_absolute_path(const char *path) {
-    if (path == NULL || path[0] != '/' || strlen(path) > 4095U) return false;
-    const char *component = path;
-    while ((component = strstr(component, "..")) != NULL) {
-        bool left = component == path || component[-1] == '/';
-        bool right = component[2] == '\0' || component[2] == '/';
-        if (left && right) return false;
-        component += 2;
+    if (path == NULL || path[0] != '/') return false;
+    size_t length = strnlen(path, 4096U);
+    if (length < 2U || length >= 4096U || path[length - 1U] == '/')
+        return false;
+    const char *component = path + 1;
+    while (*component != '\0') {
+        const char *end = strchr(component, '/');
+        size_t component_length = end == NULL ? strlen(component) :
+            (size_t)(end - component);
+        if (component_length == 0U ||
+            (component_length == 1U && component[0] == '.') ||
+            (component_length == 2U && component[0] == '.' &&
+             component[1] == '.')) return false;
+        if (end == NULL) break;
+        component = end + 1;
     }
     return true;
+}
+
+static int open_no_symlink_path(const char *path, L1ProposalStatus *status) {
+    if (!safe_absolute_path(path)) {
+        set_status(status, L1_PROPOSAL_FILE_PATH);
+        return -1;
+    }
+    char local[4096];
+    size_t length = strlen(path);
+    memcpy(local, path, length + 1U);
+    int parent = open("/", O_RDONLY | O_CLOEXEC | O_DIRECTORY);
+    if (parent < 0) {
+        set_status(status, L1_PROPOSAL_IO);
+        return -1;
+    }
+    char *component = local + 1;
+    for (;;) {
+        char *slash = strchr(component, '/');
+        bool final = slash == NULL;
+        if (!final) *slash = '\0';
+        int flags = O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK;
+        if (!final) flags |= O_DIRECTORY;
+        int next = openat(parent, component, flags);
+        int open_error = errno;
+        if (close(parent) != 0 && next >= 0) {
+            (void)close(next);
+            set_status(status, L1_PROPOSAL_IO);
+            return -1;
+        }
+        if (next < 0) {
+            set_status(status,
+                       open_error == ELOOP || open_error == ENOTDIR ?
+                       L1_PROPOSAL_FILE_TYPE : L1_PROPOSAL_IO);
+            return -1;
+        }
+        if (final) return next;
+        parent = next;
+        component = slash + 1;
+    }
 }
 
 static bool same_file(const struct stat *left, const struct stat *right) {
@@ -207,31 +254,21 @@ void l1_proposal_set_test_post_read_hook(L1ProposalTestHook hook,
 bool l1_proposal_read_file(const char *path,
                            uint8_t bytes[L1_PROPOSAL_MAX_BYTES],
                            size_t *length, L1ProposalStatus *status) {
-    if (!safe_absolute_path(path) || bytes == NULL || length == NULL) {
-        set_status(status, path == NULL || bytes == NULL || length == NULL ?
-                   L1_PROPOSAL_INVALID_ARGUMENT : L1_PROPOSAL_FILE_PATH);
+    if (path == NULL || bytes == NULL || length == NULL) {
+        set_status(status, L1_PROPOSAL_INVALID_ARGUMENT);
         return false;
     }
-    struct stat path_before, opened_before, opened_after, path_after;
-    if (lstat(path, &path_before) != 0) {
+    struct stat opened_before, opened_after, path_after;
+    int descriptor = open_no_symlink_path(path, status);
+    if (descriptor < 0) return false;
+    if (fstat(descriptor, &opened_before) != 0) {
+        if (descriptor >= 0) (void)close(descriptor);
         set_status(status, L1_PROPOSAL_IO);
         return false;
     }
-    if (!S_ISREG(path_before.st_mode)) {
-        set_status(status, L1_PROPOSAL_FILE_TYPE);
-        return false;
-    }
-    int descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
-    if (descriptor < 0 || fstat(descriptor, &opened_before) != 0) {
-        if (descriptor >= 0) (void)close(descriptor);
-        set_status(status, errno == ELOOP ? L1_PROPOSAL_FILE_TYPE :
-                   L1_PROPOSAL_IO);
-        return false;
-    }
-    if (!S_ISREG(opened_before.st_mode) ||
-        !same_file(&path_before, &opened_before)) {
+    if (!S_ISREG(opened_before.st_mode)) {
         (void)close(descriptor);
-        set_status(status, L1_PROPOSAL_FILE_CHANGED);
+        set_status(status, L1_PROPOSAL_FILE_TYPE);
         return false;
     }
     if (opened_before.st_uid != geteuid() ||
@@ -269,7 +306,11 @@ bool l1_proposal_read_file(const char *path,
 #ifdef L1_TESTING
     if (post_read_hook != NULL) post_read_hook(post_read_context);
 #endif
-    if (!metadata_ok || lstat(path, &path_after) != 0 ||
+    int path_descriptor = metadata_ok ? open_no_symlink_path(path, status) : -1;
+    bool path_ok = path_descriptor >= 0 &&
+        fstat(path_descriptor, &path_after) == 0;
+    if (path_descriptor >= 0 && close(path_descriptor) != 0) path_ok = false;
+    if (!metadata_ok || !path_ok ||
         !same_file(&opened_before, &opened_after) ||
         !same_file(&opened_after, &path_after)) {
         set_status(status, L1_PROPOSAL_FILE_CHANGED);
@@ -285,7 +326,8 @@ bool l1_proposal_test_apply_clone(
     const L1Core *current, const uint8_t *bytes, size_t length,
     L1ProposalTestVerifier verifier, void *verifier_context,
     L1Core *result, L1ProposalStatus *status) {
-    if (current == NULL || bytes == NULL || result == NULL) {
+    if (current == NULL || bytes == NULL || result == NULL ||
+        current == result) {
         set_status(status, L1_PROPOSAL_INVALID_ARGUMENT);
         return false;
     }
