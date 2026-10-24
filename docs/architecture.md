@@ -179,3 +179,28 @@ checked again before any buffered rows are printed. No trace, policy, state, OS
 control, workload, or hardware setting is written. Passing this milestone means
 only that the replay interface is ready for human assessment. Adaptation
 remains NO-GO and real resource benefit remains NOT_ESTABLISHED.
+
+## Level 1 v1.0 real-evidence boundary
+
+V1.0 adds a bounded offline observer around the unchanged L1 core and shadow
+learner. It accepts only strict, checksummed V1 traces through an explicit
+absolute guest path and provenance label. A complete validation pass precedes
+analysis, and a second pass must match file identity, size, row count, and
+checksum. The analyzer emits aggregate counts only; it does not print raw rows
+or the private input path.
+
+The first 60% of relative monotonic recording time is development. A 65-second
+embargo follows, and evaluation starts with independently initialized core and
+shadow state. Both live-default and V0.6-trained thresholds are scored as
+static versus unchanged adaptive predictions using the same future PSI counter
+outcomes. No outcome is supplied before its causal 60-second window, and no
+offline label is available to runtime learning.
+
+Evidence readiness is a data-coverage decision, not an efficacy verdict. It
+requires at least 30 scored evaluation windows, 80% feedback eligibility, and
+five positive plus five negative outcomes for every class, as well as exact
+metric reconciliation and core byte/action equivalence. Synthetic fixtures
+cannot satisfy the real-evidence provenance gate. Without a separately
+authorized real recording, `REAL_EVIDENCE` remains `INSUFFICIENT` and forecast
+transfer stays `UNDETERMINED`. Historical adaptation/action-coupling NO-GO and
+the absence of demonstrated resource benefit remain unchanged.

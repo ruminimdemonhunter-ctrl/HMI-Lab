@@ -1,4 +1,4 @@
-# HMI Lab | Level 1 v0.8 (C11)
+# HMI Lab | Level 1 v1.0 candidate (C11)
 
 **First working implementation — observe / decide / recommend ONLY.**
 It does not alter process priorities, cgroups, CPU registers, RAM, kernel state,
@@ -244,6 +244,32 @@ maximum-row trace in /tmp, measures parser, core+shadow, formatting, complete
 CLI CPU and RSS, and removes the trace. It does not read PSI or create load.
 See docs/L1-human-acceptance.md.
 
+## Offline real-PSI evidence analyzer
+
+V1.0 adds `l1_evidence`, a finite read-only analyzer for an already-existing,
+fully validated V1 PSI trace. It performs a complete validation pass before
+analysis, then verifies file identity, row count, byte count, and checksum on
+the replay pass. It never prints the private input path or raw samples.
+
+    ./l1_evidence analyze /absolute/guest/data/session.l1trace \
+      --source real-guest-v1
+
+The analyzer freezes the first 60% by relative monotonic time as development,
+skips a 65-second embargo, and initializes independent learner and core state
+for the final evaluation segment. It separately compares static and unchanged
+adaptive forecasts for `live-default=800/40/150` and
+`v06-trained=2000/75/600`. Published actions come from the existing
+`l1_step_at()` and are compared byte-for-byte with an observer-free reference;
+forecasts come only from `l1_fixed_prediction()` and `l1_shadow_step_at()`.
+
+`make evidence-ci` generates bounded synthetic fixtures for split, feedback,
+gap, reset, invalid-input, underpopulation, accounting, golden-output, and
+privacy checks. `make evidence-bench` analyzes an 86,400-row synthetic trace
+five times and reports complete process CPU/wall time and RSS. These fixtures
+validate tooling, not real forecast transfer. A research-length capture still
+requires a separate user instruction containing both duration and guest-local
+output path, and raw recordings must not enter this repository.
+
 ## Components
 
 ```
@@ -268,6 +294,8 @@ l1_demo.h/.c     Frozen seeded transparent-replay demonstration rows
 l1_inspect.c     Read-only action/shadow/fixed-controller replay viewer
 l1_inspect_test.c Independent expected-action and core-byte equivalence tests
 l1_inspect_bench.c Bounded parser/replay/format/CLI resource measurement
+l1_evidence.c    Validated split/scoring/readiness observer for V1 traces
+l1_evidence_bench.c Complete analyzer process CPU/wall/RSS measurement
 l1_replay.c      Labeled fixed-memory vs bounded-adaptive experiment
 evaluation/l1_evaluate.c  Seeded train/held-out three-controller evaluator
 evaluation/l1_evaluate_v05.c  Frozen four-controller risk-aware evaluator

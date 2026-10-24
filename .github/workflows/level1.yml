@@ -2,7 +2,7 @@ name: Level 1 C11 validation
 
 on:
   push:
-    branches: [main, "feature/l1-v0.3-memory-stability", "feature/l1-v0.4-adaptive-evaluation", "feature/l1-v0.5-risk-aware-memory", "feature/l1-v0.6-outcome-feedback", "feature/l1-v0.7-workload-evidence", "feature/l1-v0.8-recorder-evidence", "feature/l1-v0.9-transparent-replay"]
+    branches: [main, "feature/l1-v0.3-memory-stability", "feature/l1-v0.4-adaptive-evaluation", "feature/l1-v0.5-risk-aware-memory", "feature/l1-v0.6-outcome-feedback", "feature/l1-v0.7-workload-evidence", "feature/l1-v0.8-recorder-evidence", "feature/l1-v0.9-transparent-replay", "feature/l1-v1.0-real-psi-evidence"]
   pull_request:
     branches: [main]
 
@@ -37,6 +37,10 @@ jobs:
         run: make inspect-ci
       - name: Bounded transparent replay resource smoke test
         run: make inspect-bench-ci
+      - name: Offline PSI evidence analyzer smoke test
+        run: make evidence-ci
+      - name: Bounded offline evidence resource smoke test
+        run: make evidence-bench-ci
 
   sanitizers:
     runs-on: ubuntu-latest
@@ -85,3 +89,13 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: make inspect-bench-ci
+      - name: Sanitizer-backed PSI evidence analyzer smoke test
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: make evidence-ci
+      - name: Sanitizer-backed evidence resource smoke test
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: make evidence-bench-sanitize-ci
