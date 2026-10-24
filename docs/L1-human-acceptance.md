@@ -1,10 +1,15 @@
 # HMI Level 1 RC0 human acceptance guide
 
-> **NOT YET RELEASED FOR PERSONAL ACCEPTANCE**
+> **RELEASED FOR PERSONAL READ-ONLY ACCEPTANCE — RC0**
 >
-> This packet is complete for review, but personal assessment must not start
-> until RC0 is merged and an independent scientific reviewer approves the
-> exact RC0 commit.
+> The RC0 implementation at `56303df90c9e412df2279d2ccb5fa8e31d17ed88`
+> was independently reviewed and integrated via PR #20, merge commit
+> `3a90220c09afedc1b222f89b319910a37943fe28`.
+> The owner has authorized opening the personal evaluation of *advisory*
+> behavior and explainability. This does not authorize production use,
+> real PSI research recording, workload generation, L2/L3 deployment, guest
+> resource actuation, or Windows host/hardware changes. Stop if any
+> engineering check fails.
 
 ## Scope and safety
 
@@ -35,8 +40,8 @@ After a reviewed RC0 is integrated, use PowerShell from the Windows workspace:
     git switch main
     git pull --ff-only origin main
 
-For pre-merge PR review only, explicitly use the review branch and do not call
-it a release:
+For archival inspection of the original reviewed PR branch (not the released
+`main`), explicitly use:
 
     git switch feature/l1-rc0-offline-qualification
 
