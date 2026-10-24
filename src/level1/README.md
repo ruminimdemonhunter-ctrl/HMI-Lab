@@ -43,7 +43,7 @@ Recommendations do **nothing** to the OS in this release.
 `L1Core` contains a compact `L1Policy` (behavior memory) and bounded working
 state. `l1_step_at()` has no kernel interfaces and performs no allocations; its
 caller supplies monotonic milliseconds as explicit deterministic input.
-An L2-style actor may propose **only** a new policy file in the guest; the L1
+The legacy development monitor may read a new policy file in the guest; the L1
 process parses the complete candidate and calls `l1_apply_policy()` only if:
 
 1. schema version is 1;
@@ -59,9 +59,22 @@ active generation. Rollback therefore does not weaken replay protection and,
 like an ordinary update, resets the recommendation to `HOLD`.
 
 This is a *prototype policy contract*, **not** an authenticated L2 security
-boundary. Future L2 integration will require access controls, authenticated
-origin, authorization, auditing and deeper rollback policies. L2 cannot recompile or
-change L1's immutable safety rules *through this contract*.
+boundary. The `--policy` route is explicitly an unauthenticated legacy
+development interface and cannot be used as a production L2 authorization
+path. Future integration requires an approved trust anchor, protected key
+lifecycle, independent monotonic replay storage, access control and auditing.
+L2 cannot recompile or change L1's immutable safety rules *through this
+contract*.
+
+V1.1 adds a separate `l1_proposal_check` offline tool for the canonical
+`HMI_L1_POLICY_PROPOSAL_V1` envelope. It performs strict bounded parsing,
+compiled-policy checks, compare-and-swap generation checks, and best-effort
+local file safeguards. It always reports `authority=none` and
+`production_apply=blocked`; no command-line flag, source label or envelope
+field can authorize application. Only a binary built with `L1_TESTING` has
+the mock verifier seam, and successful tests apply solely to a copied
+`L1Core`. That mock compares exact bytes but is not cryptographic
+authentication and is not present as a positive production provider.
 
 The policy file is checked every 5 observation cycles (not at microsecond
 scheduling timescales). For a continuous demo, from Debian:
@@ -139,6 +152,11 @@ disposable synchronized `src/` tree. See `docs/L1-v0.3-memory-state.md`.
   hysteresis, priority, and PSI parser tests.
 - `make test-ndebug` — rebuild and rerun checks with `-DNDEBUG`.
 - `make sanitize` — ASan/UBSan/leak-enabled test build.
+- `make proposal-ci` — canonical/adversarial parsing, default-deny
+  authorization, filesystem replacement, byte-isolation, HOLD reset and
+  rollback tests for the offline V1.1 boundary.
+- `make proposal-bench` — five optimized process measurements covering one
+  canonical envelope plus one maximum-size negative envelope.
 - `make replay` — five independent deterministic fixed-memory/adaptive
   experiments measuring false responses, misses, oscillation, detection delay,
   core size, process RSS, and CPU cost.
@@ -284,6 +302,9 @@ l1_linux.h       Bounded persistent read-only PSI reader interface
 l1_linux_test.c  One-shot/persistent PSI equivalence and failure tests
 l1_shadow.h/.c   Fixed-size delayed-outcome shadow learner
 l1_policy.c      Strict L2-style behavior-memory proposal parser
+l1_proposal.h/.c V1.1 canonical offline proposal boundary (default deny)
+l1_proposal_check.c Offline validity CLI; no production apply authority
+l1_proposal_test.c Test-only exact-byte mock verifier and clone safety tests
 l1_state.c       Versioned CRC state, atomic persistence and safe recovery
 l1_main.c        Monitor, monotonic clock adapter, policy/state loop
 l1_test.c        Policy, fallback, adaptation, parser and rollback tests
