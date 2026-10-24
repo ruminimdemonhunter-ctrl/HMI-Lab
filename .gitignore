@@ -12,6 +12,8 @@
 /src/level1/l1_inspect
 /src/level1/l1_inspect_test
 /src/level1/l1_inspect_bench
+/src/level1/l1_evidence
+/src/level1/l1_evidence_bench
 /src/level1/l1_diagnostics
 /src/level1/l1_test
 /src/level1/l1_trace_test

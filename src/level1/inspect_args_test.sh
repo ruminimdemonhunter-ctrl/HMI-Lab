@@ -20,10 +20,14 @@ grep -q '^usage:$' /tmp/l1-inspect-help.out
 grep -q '^SUMMARY name=rising-cpu rows=7 ' /tmp/l1-inspect-summary.out
 grep -q 'observer_mismatches=0' /tmp/l1-inspect-summary.out
 ./l1_inspect demo rising-cpu >/tmp/l1-inspect-golden.out
-cmp testdata/l1_inspect_rising_cpu.golden /tmp/l1-inspect-golden.out
+sed 's/\r$//' testdata/l1_inspect_rising_cpu.golden \
+    >/tmp/l1-inspect-golden.expected
+cmp /tmp/l1-inspect-golden.expected /tmp/l1-inspect-golden.out
 ./l1_inspect demo --details 0 >/tmp/l1-inspect-all.out
 grep '^SUMMARY ' /tmp/l1-inspect-all.out >/tmp/l1-inspect-summaries.out
-cmp testdata/l1_inspect_summaries.golden /tmp/l1-inspect-summaries.out
+sed 's/\r$//' testdata/l1_inspect_summaries.golden \
+    >/tmp/l1-inspect-summaries.expected
+cmp /tmp/l1-inspect-summaries.expected /tmp/l1-inspect-summaries.out
 python3 evaluation/generate_inspect_trace.py "$trace" 2
 ./l1_inspect trace "$trace" --forecast-config live-default --details 2 \
     >/tmp/l1-inspect-trace-live.out
@@ -51,8 +55,9 @@ expect_fail ./l1_inspect trace /tmp/missing.trace --details 2001
 
 rm -f /tmp/l1-inspect-args.out /tmp/l1-inspect-args.err \
       /tmp/l1-inspect-help.out /tmp/l1-inspect-summary.out
-rm -f /tmp/l1-inspect-golden.out
-rm -f /tmp/l1-inspect-all.out /tmp/l1-inspect-summaries.out
+rm -f /tmp/l1-inspect-golden.out /tmp/l1-inspect-golden.expected
+rm -f /tmp/l1-inspect-all.out /tmp/l1-inspect-summaries.out \
+      /tmp/l1-inspect-summaries.expected
 rm -f /tmp/l1-inspect-trace-live.out /tmp/l1-inspect-trace-v06.out \
       "$trace" "$corrupt"
 echo "PASS: inspect argument, path, option, and output bounds"
