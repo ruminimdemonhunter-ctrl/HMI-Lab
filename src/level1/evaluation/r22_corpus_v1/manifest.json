@@ -1,0 +1,130 @@
+{
+  "claims": "synthetic engineered labels only; R2.2 does not score utility or individuality",
+  "comparator_file": "r23_fixed_comparator_v1.json",
+  "files": {
+    "README.md": "0260e32b1c4c88c19f72ea8852a5dabf930156d6dcea3a47e4bb9ef92e44583d",
+    "faults.csv": "a9126ee0ae8f170c1c53b9535d96edc5425c0b09af3bc3978a73913997e3230b",
+    "machine_a_calibration.csv": "9d0c818f86b5a20b998e3e4b0426e46ffcbdf6e069c31aa270e8fedb530e6f8a",
+    "machine_a_calibration_episodes.csv": "803511c14b2fe551ed00af7e576a556cc4caa1c4874df3d01d3bd80b81b3f2cb",
+    "machine_a_heldout.csv": "29f27d6e47392964df51f8fc8b6978b79cfa09c88142b5032d01e1a5b05d5c56",
+    "machine_a_heldout_episodes.csv": "0b7583effb4f229d38d58332444cf564153d0a13d4cd091f40298530b33636f6",
+    "machine_a_train.csv": "5f9fa024b8cab1a036c3b17a74411d6ff21bc165f6eecdce679aa15d99445cf0",
+    "machine_a_train_episodes.csv": "72e213528091aef6b913c8e0453f7bd2dca4cb8d7b25c3a8256cfb52bf088b65",
+    "machine_b_calibration.csv": "672f1b5d68b728cdfc36d973799508aed1ba512289d8f188010b31f2d168ac71",
+    "machine_b_calibration_episodes.csv": "0e211533195c30150ea31b6afcaa6d264d3489dd6e2eaf16a4b4027658691977",
+    "machine_b_heldout.csv": "ea0abca2ec167db54610df13ac5610b3b1781e0f87c28343af7dda67155267b4",
+    "machine_b_heldout_episodes.csv": "ad1c41f09688113a868090000697737a10e082fedcae869e61038ee43f907d48",
+    "machine_b_train.csv": "30e42a96f62c856253893e961b6a4b734c940b9a72f0b30d8bd3933d8a0408c3",
+    "machine_b_train_episodes.csv": "d86e718442c03cd985242cfc3b3f990bdca0bc542dad8b3da505a88ae4b4c74f",
+    "r23_fixed_comparator_v1.json": "9d6634865a48219db6c496e228ce1c5fefaa8c9d74c8745c805087fd7441f782",
+    "regime_swap.csv": "61f98f02f79aec2706d94ef9ce77de67e3db8c560ba67c5f87183836f88f3649",
+    "shared_probe.csv": "d7949ca4cf15e01ed0b9217139a30fb10c8cdb6d4ce8fe65ab3725b7655307f1"
+  },
+  "generator": "generate_r22_corpus.py",
+  "heldout_support_gate": {
+    "minimum_normal_windows_per_machine": 20,
+    "minimum_positive_windows_per_machine": 20,
+    "status": "PASS"
+  },
+  "probes": [
+    {
+      "file": "shared_probe.csv",
+      "name": "shared_probe",
+      "rows": 640,
+      "seed": 9001
+    },
+    {
+      "file": "regime_swap.csv",
+      "name": "regime_swap",
+      "rows": 640,
+      "seed": 9002
+    },
+    {
+      "file": "faults.csv",
+      "name": "faults",
+      "rows": 640,
+      "seed": 9003
+    }
+  ],
+  "rows_per_session": 320,
+  "schema": "HMI_L1_R22_CORPUS_V1",
+  "split_order": [
+    "train",
+    "calibration",
+    "heldout"
+  ],
+  "splits": [
+    {
+      "data_file": "machine_a_train.csv",
+      "episode_file": "machine_a_train_episodes.csv",
+      "excluded_rows": 21,
+      "machine": "A",
+      "normal_windows": 96,
+      "positive_windows": 72,
+      "rows": 7680,
+      "seed": 1101,
+      "sessions": 24,
+      "split": "train"
+    },
+    {
+      "data_file": "machine_b_train.csv",
+      "episode_file": "machine_b_train_episodes.csv",
+      "excluded_rows": 21,
+      "machine": "B",
+      "normal_windows": 96,
+      "positive_windows": 72,
+      "rows": 7680,
+      "seed": 2101,
+      "sessions": 24,
+      "split": "train"
+    },
+    {
+      "data_file": "machine_a_calibration.csv",
+      "episode_file": "machine_a_calibration_episodes.csv",
+      "excluded_rows": 7,
+      "machine": "A",
+      "normal_windows": 32,
+      "positive_windows": 24,
+      "rows": 2560,
+      "seed": 1201,
+      "sessions": 8,
+      "split": "calibration"
+    },
+    {
+      "data_file": "machine_b_calibration.csv",
+      "episode_file": "machine_b_calibration_episodes.csv",
+      "excluded_rows": 7,
+      "machine": "B",
+      "normal_windows": 32,
+      "positive_windows": 24,
+      "rows": 2560,
+      "seed": 2201,
+      "sessions": 8,
+      "split": "calibration"
+    },
+    {
+      "data_file": "machine_a_heldout.csv",
+      "episode_file": "machine_a_heldout_episodes.csv",
+      "excluded_rows": 7,
+      "machine": "A",
+      "normal_windows": 32,
+      "positive_windows": 24,
+      "rows": 2560,
+      "seed": 1301,
+      "sessions": 8,
+      "split": "heldout"
+    },
+    {
+      "data_file": "machine_b_heldout.csv",
+      "episode_file": "machine_b_heldout_episodes.csv",
+      "excluded_rows": 7,
+      "machine": "B",
+      "normal_windows": 32,
+      "positive_windows": 24,
+      "rows": 2560,
+      "seed": 2301,
+      "sessions": 8,
+      "split": "heldout"
+    }
+  ]
+}
