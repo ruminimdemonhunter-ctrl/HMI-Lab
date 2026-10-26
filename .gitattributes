@@ -10,3 +10,4 @@ Makefile text eol=lf
 *.csv text eol=lf
 SHA256SUMS text eol=lf
 /src/level1/evaluation/r22_corpus_v1/README.md text eol=lf
+/src/level1/evaluation/r23_calibration_lock_v1.txt text eol=lf
