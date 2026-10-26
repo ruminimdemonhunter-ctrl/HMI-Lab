@@ -3,7 +3,7 @@ CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic
 CPPFLAGS ?=
 LDLIBS ?=
 
-.PHONY: all test test-ndebug sanitize rc0-audit rc0-ci rc0-qualification r22-corpus-verify r23-lock-verify novelty-bench novelty-bench-ci evaluation-r23-calibration evaluation-r23-heldout operational-memory-bench operational-memory-bench-ci perception-bench perception-bench-ci proposal-ci proposal-bench proposal-bench-ci proposal-bench-sanitize-ci inspect-ci inspect-bench inspect-bench-ci evidence-ci evidence-bench evidence-bench-ci evidence-bench-sanitize-ci bench shadow-bench recorder-bench recorder-bench-ci psi-bench diagnostics-bench replay evaluation-ci evaluation-train evaluation-heldout evaluation-v05-ci evaluation-v05-development evaluation-v05-train evaluation-v05-heldout evaluation-v06-ci evaluation-v06-development evaluation-v06-train evaluation-v06-heldout evaluation-v07-ci evaluation-v07-development evaluation-v07-verification evaluation-v07-heldout clean
+.PHONY: all test test-ndebug sanitize rc0-audit rc0-ci rc0-qualification r22-corpus-verify r23-lock-verify novelty-bench novelty-bench-ci evaluation-r23-ci evaluation-r23-calibration evaluation-r23-heldout operational-memory-bench operational-memory-bench-ci perception-bench perception-bench-ci proposal-ci proposal-bench proposal-bench-ci proposal-bench-sanitize-ci inspect-ci inspect-bench inspect-bench-ci evidence-ci evidence-bench evidence-bench-ci evidence-bench-sanitize-ci bench shadow-bench recorder-bench recorder-bench-ci psi-bench diagnostics-bench replay evaluation-ci evaluation-train evaluation-heldout evaluation-v05-ci evaluation-v05-development evaluation-v05-train evaluation-v05-heldout evaluation-v06-ci evaluation-v06-development evaluation-v06-train evaluation-v06-heldout evaluation-v07-ci evaluation-v07-development evaluation-v07-verification evaluation-v07-heldout clean
 all: l1_monitor l1_trace_record l1_inspect l1_inspect_bench l1_evidence l1_evidence_bench l1_proposal_check l1_proposal_test l1_proposal_bench l1_rc0_test l1_perception_test l1_perception_bench l1_operational_memory_test l1_operational_memory_bench l1_operational_memory_corpus l1_novelty_test l1_novelty_bench l1_evaluate_r23 l1_diagnostics l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_linux_test l1_inspect_test l1_recorder_bench l1_psi_bench l1_bench l1_shadow_bench l1_replay l1_evaluate l1_evaluate_v05 l1_evaluate_v06
 
 l1_monitor: l1_main.c l1_core.c l1_shadow.c l1_policy.c l1_state.c l1_linux.c l1.h l1_shadow.h
@@ -157,6 +157,7 @@ rc0-ci:
 	$(MAKE) perception-bench-ci
 	$(MAKE) r22-corpus-verify operational-memory-bench-ci
 	$(MAKE) r23-lock-verify novelty-bench-ci
+	$(MAKE) evaluation-r23-ci
 	$(MAKE) rc0-audit
 	@printf '%s\n' 'RC0_CI=PASS' 'V1_2_BENEFIT_EXPERIMENT=BLOCKED'
 
@@ -164,7 +165,7 @@ rc0-qualification:
 	$(MAKE) clean all test
 	$(MAKE) test-ndebug
 	ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 $(MAKE) sanitize
-	ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 $(MAKE) evaluation-ci evaluation-v05-ci evaluation-v06-ci evaluation-v07-ci
+	ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 $(MAKE) evaluation-ci evaluation-v05-ci evaluation-v06-ci evaluation-v07-ci evaluation-r23-ci
 	ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 $(MAKE) recorder-bench-ci inspect-ci inspect-bench-ci evidence-ci evidence-bench-sanitize-ci proposal-ci proposal-bench-sanitize-ci
 	$(MAKE) clean all test
 	$(MAKE) replay evaluation-ci evaluation-v05-ci evaluation-v06-ci evaluation-v07-ci
@@ -173,6 +174,7 @@ rc0-qualification:
 	$(MAKE) perception-bench
 	$(MAKE) r22-corpus-verify operational-memory-bench
 	$(MAKE) r23-lock-verify novelty-bench
+	$(MAKE) evaluation-r23-ci
 	$(MAKE) bench shadow-bench
 	$(MAKE) rc0-audit
 	@printf '%s\n' 'RC0_QUALIFICATION_COMMANDS=PASS' 'V1_2_BENEFIT_EXPERIMENT=BLOCKED'
@@ -206,6 +208,9 @@ evaluation-r23-calibration: l1_evaluate_r23
 
 evaluation-r23-heldout: l1_evaluate_r23 r23-lock-verify
 	./l1_evaluate_r23 heldout evaluation/r22_corpus_v1 evaluation/r23_calibration_lock_v1.txt
+
+evaluation-r23-ci: l1_evaluate_r23
+	sh ./evaluation/run_ci_r23.sh
 
 inspect-ci: l1_inspect l1_inspect_test
 	./l1_inspect_test
