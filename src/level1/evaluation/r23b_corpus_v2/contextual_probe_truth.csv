@@ -1,0 +1,7 @@
+schema,probe_id,machine,truth_label,truth_origin
+HMI_L1_R23B_CORPUS_V2,A_NATIVE,A,EXPECTED,generated_from_A_latent_profile
+HMI_L1_R23B_CORPUS_V2,A_NATIVE,B,SUSPECTED,generated_from_A_latent_profile
+HMI_L1_R23B_CORPUS_V2,B_NATIVE,A,SUSPECTED,generated_from_B_latent_profile
+HMI_L1_R23B_CORPUS_V2,B_NATIVE,B,EXPECTED,generated_from_B_latent_profile
+HMI_L1_R23B_CORPUS_V2,INVALID_IDENTICAL,A,UNKNOWN,predeclared_invalid_quality
+HMI_L1_R23B_CORPUS_V2,INVALID_IDENTICAL,B,UNKNOWN,predeclared_invalid_quality

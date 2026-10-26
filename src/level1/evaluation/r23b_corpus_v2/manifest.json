@@ -1,0 +1,128 @@
+{
+  "claims": "synthetic engineered contextual truth only; no real workload evidence",
+  "files": {
+    "README.md": "902d3604c1f263218df75e67e286a13a3958288612767e8f6a95a4232ca0959f",
+    "contextual_probe_truth.csv": "8c78e325bd8458daac833146d96e21d1e02266b38acde059440bde481c0520c2",
+    "contextual_probes.csv": "0d56d25962d8a8addc5f7f07e991e97224460d5faa6c53fd952a2f770c90525a",
+    "fault_probes.csv": "f012670dd147ebac2b82d3eba0eeed48873d963060913db7d8b01307fbec0f49",
+    "fixed_references_v1.json": "f4e6cc380545f8b1b3c02ea60562233fc0c61f5170cc52a0e06d96df3ddf4b3d",
+    "machine_a_calibration.csv": "95840f507407761256bee5fe0f8c5f02fee4cb46b8db17fe961421cbb9931c1d",
+    "machine_a_calibration_episodes.csv": "88d26193f3977a44d61549deac65b43470ab623d6245cffbca21bf3e2e3ebb85",
+    "machine_a_heldout.csv": "86040118459cbdc32a902f227f58d02ec09a0cf3b22753d468cf8d9cbf9aab1b",
+    "machine_a_heldout_episodes.csv": "b8476ae2529c69fcfb172da959b6a267bc308afaf894f6c923b163c47d46a7c8",
+    "machine_a_train.csv": "e56270cd42b3c923d5e666c79318949357f877a107c03e2a36286c9c430cae52",
+    "machine_a_train_episodes.csv": "da81ddd2c94d35b5ec8b61cf275af52f3880bd7c725e5b366322d283eb221661",
+    "machine_b_calibration.csv": "b62e56a20c3ecfcd4263bfbed7c32656d111c15dae4afd82a3b0dd8beac1c0ee",
+    "machine_b_calibration_episodes.csv": "b5743972f2c80f528fa725d60c806fdc8c819648bc8eba7a32fd5c19e821d1f1",
+    "machine_b_heldout.csv": "f0a74107841a7478c18341fdb15c99f2929279b7ae591095f8d63fb7de3b6343",
+    "machine_b_heldout_episodes.csv": "bcdd464a441e2d966c0a8637261253b1b88e682e5af3efe681108c2b7a7077c9",
+    "machine_b_train.csv": "07f4882a0754f5a6a0a6bc5ac99364140981dc61101dde6056772230c005d499",
+    "machine_b_train_episodes.csv": "dc04b6451a9783d059f5dd42032eeca5b86a0b432ad124d5738f3155c1407deb",
+    "regime_shift.csv": "5ac6944f58169118b17fcf33f37f66d71cd6837f72f7e3f98d9150235f023b12"
+  },
+  "generator": "generate_r23b_corpus.py",
+  "generator_sha256": "b114b8210506f7a8bff7fb548af584ba47af50c31ac650b547bb031db8475bd8",
+  "probe_files": [
+    "contextual_probes.csv",
+    "contextual_probe_truth.csv",
+    "regime_shift.csv",
+    "fault_probes.csv"
+  ],
+  "rows_per_session": 320,
+  "schema": "HMI_L1_R23B_CORPUS_V2",
+  "seeds": {
+    "A": {
+      "calibration": 3201,
+      "heldout": 3301,
+      "train": 3101
+    },
+    "A_NATIVE": 9101,
+    "B": {
+      "calibration": 4201,
+      "heldout": 4301,
+      "train": 4101
+    },
+    "B_NATIVE": 9102,
+    "faults": 9301,
+    "regime_shift": 9201
+  },
+  "split_order": [
+    "train",
+    "calibration",
+    "heldout"
+  ],
+  "splits": [
+    {
+      "data_file": "machine_a_train.csv",
+      "episode_file": "machine_a_train_episodes.csv",
+      "excluded_rows": 48,
+      "machine": "A",
+      "normal_episodes": 96,
+      "positive_episodes": 72,
+      "rows": 7680,
+      "seed": 3101,
+      "sessions": 24,
+      "split": "train"
+    },
+    {
+      "data_file": "machine_b_train.csv",
+      "episode_file": "machine_b_train_episodes.csv",
+      "excluded_rows": 48,
+      "machine": "B",
+      "normal_episodes": 96,
+      "positive_episodes": 72,
+      "rows": 7680,
+      "seed": 4101,
+      "sessions": 24,
+      "split": "train"
+    },
+    {
+      "data_file": "machine_a_calibration.csv",
+      "episode_file": "machine_a_calibration_episodes.csv",
+      "excluded_rows": 16,
+      "machine": "A",
+      "normal_episodes": 32,
+      "positive_episodes": 24,
+      "rows": 2560,
+      "seed": 3201,
+      "sessions": 8,
+      "split": "calibration"
+    },
+    {
+      "data_file": "machine_b_calibration.csv",
+      "episode_file": "machine_b_calibration_episodes.csv",
+      "excluded_rows": 16,
+      "machine": "B",
+      "normal_episodes": 32,
+      "positive_episodes": 24,
+      "rows": 2560,
+      "seed": 4201,
+      "sessions": 8,
+      "split": "calibration"
+    },
+    {
+      "data_file": "machine_a_heldout.csv",
+      "episode_file": "machine_a_heldout_episodes.csv",
+      "excluded_rows": 16,
+      "machine": "A",
+      "normal_episodes": 32,
+      "positive_episodes": 24,
+      "rows": 2560,
+      "seed": 3301,
+      "sessions": 8,
+      "split": "heldout"
+    },
+    {
+      "data_file": "machine_b_heldout.csv",
+      "episode_file": "machine_b_heldout_episodes.csv",
+      "excluded_rows": 16,
+      "machine": "B",
+      "normal_episodes": 32,
+      "positive_episodes": 24,
+      "rows": 2560,
+      "seed": 4301,
+      "sessions": 8,
+      "split": "heldout"
+    }
+  ]
+}
