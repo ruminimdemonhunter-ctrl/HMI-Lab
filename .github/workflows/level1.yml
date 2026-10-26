@@ -2,7 +2,7 @@ name: Level 1 C11 validation
 
 on:
   push:
-    branches: [main, "feature/l1-v0.3-memory-stability", "feature/l1-v0.4-adaptive-evaluation", "feature/l1-v0.5-risk-aware-memory", "feature/l1-v0.6-outcome-feedback", "feature/l1-v0.7-workload-evidence", "feature/l1-v0.8-recorder-evidence", "feature/l1-v0.9-transparent-replay", "feature/l1-v1.0-real-psi-evidence", "feature/l1-v1.1-policy-boundary", "feature/l1-rc0-offline-qualification", "feature/l1-r2.1-state-classifier", "feature/l1-r2.2-operational-memory"]
+    branches: [main, "feature/l1-v0.3-memory-stability", "feature/l1-v0.4-adaptive-evaluation", "feature/l1-v0.5-risk-aware-memory", "feature/l1-v0.6-outcome-feedback", "feature/l1-v0.7-workload-evidence", "feature/l1-v0.8-recorder-evidence", "feature/l1-v0.9-transparent-replay", "feature/l1-v1.0-real-psi-evidence", "feature/l1-v1.1-policy-boundary", "feature/l1-rc0-offline-qualification", "feature/l1-r2.1-state-classifier", "feature/l1-r2.2-operational-memory", "feature/l1-r2.3c-preflight"]
   pull_request:
     branches: [main]
 
