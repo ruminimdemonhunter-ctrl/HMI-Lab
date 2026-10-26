@@ -183,7 +183,8 @@ disposable synchronized `src/` tree. See `docs/L1-v0.3-memory-state.md`.
 - `make sanitize` — ASan/UBSan/leak-enabled test build.
 - `make perception-bench` — five optimized measurements of the stateless R2.1
   classifier, reporting per-run and min/median/max process CPU cost per call,
-  process RSS, result size and zero persistent classifier state.
+  a separately sampled individual-call CPU p95, process RSS, result size and
+  zero persistent classifier state.
 - `make proposal-ci` — canonical/adversarial parsing, default-deny
   authorization, filesystem replacement, byte-isolation, HOLD reset and
   rollback tests for the offline V1.1 boundary.
