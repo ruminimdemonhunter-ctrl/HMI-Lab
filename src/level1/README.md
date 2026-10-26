@@ -93,6 +93,29 @@ remain unmeasured. Verify the committed corpus identities with
 `./l1_operational_memory_test`, and run the frozen optimized resource contract
 with `make operational-memory-bench`.
 
+## R2.3 read-only novelty evaluation
+
+`l1_novelty_score()` reads an immutable R2.2 summary and computes the frozen
+integer rarity index independently for CPU, memory and I/O bins. It returns the
+maximum channel score as a bounded 0..1023 index. The score is not a fault
+probability, confidence value, protected action or authorization signal. Bad
+quality, invalid observations and unsupported or inconsistent references
+produce `UNKNOWN`; the scorer never turns missing evidence into `EXPECTED`.
+
+The offline `l1_evaluate_r23` tool trains references from the frozen training
+split only. Calibration chooses one global novelty threshold and per-machine
+fixed comparator settings. Its committed calibration lock must verify before
+the separately invoked held-out mode can run. Neither calibration nor held-out
+inference updates the training reference. The evaluator is research tooling,
+not a runtime service or a bridge into the protected policy lane.
+
+Use `make r23-lock-verify` to reproduce calibration and validate source/data
+identities, `make evaluation-r23-heldout` for the locked deterministic research
+replay, and `make novelty-bench` for the combined perception, bounded-memory
+update and novelty-score resource contract. Synthetic novelty performance does
+not establish real workload transfer, machine personality, user knowledge or
+resource savings.
+
 ## Memory-driven behavior / safe policy proposal
 
 `L1Core` contains a compact `L1Policy` (behavior memory) and bounded working
@@ -216,6 +239,12 @@ disposable synchronized `src/` tree. See `docs/L1-v0.3-memory-state.md`.
 - `make operational-memory-bench` — five optimized ten-million-call
   measurements of perception alone and perception plus R2.2 memory, including
   separately sampled individual-call p95, process RSS and state sizes.
+- `make r23-lock-verify` — verify the committed source/data identities and
+  reproduce the calibration-only selection bound by the R2.3 lock.
+- `make evaluation-r23-heldout` — run the locked episode-level synthetic
+  held-out comparison without updating training memory.
+- `make novelty-bench` — five optimized ten-million-call measurements of the
+  combined perception, memory-update and read-only novelty path.
 - `make proposal-ci` — canonical/adversarial parsing, default-deny
   authorization, filesystem replacement, byte-isolation, HOLD reset and
   rollback tests for the offline V1.1 boundary.
@@ -372,6 +401,10 @@ l1_operational_memory.h/.c Pure bounded R2.2 histogram memory and 80B codec
 l1_operational_memory_test.c Quantization, timing, decay, restore and isolation
 l1_operational_memory_corpus.c Frozen train/calibration determinism replay
 l1_operational_memory_bench.c Split component CPU/p95/RSS measurement
+l1_novelty.h/.c Pure read-only R2.3 integer rarity scorer
+l1_novelty_test.c Equation, abstention, corruption and isolation tests
+l1_novelty_bench.c Combined bounded CPU/p95/RSS measurement
+evaluation/l1_evaluate_r23.c Strict calibration/held-out episode evaluator
 l1_policy.c      Strict L2-style behavior-memory proposal parser
 l1_proposal.h/.c V1.1 canonical offline proposal boundary (default deny)
 l1_proposal_check.c Offline validity CLI; no production apply authority
