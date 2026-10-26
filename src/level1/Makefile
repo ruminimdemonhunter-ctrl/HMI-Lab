@@ -156,6 +156,7 @@ rc0-ci:
 	$(MAKE) evidence-ci evidence-bench-ci proposal-ci proposal-bench-ci
 	$(MAKE) perception-bench-ci
 	$(MAKE) r22-corpus-verify operational-memory-bench-ci
+	$(MAKE) r23b-corpus-verify contextual-novelty-bench-ci
 	$(MAKE) rc0-audit
 	@printf '%s\n' 'RC0_CI=PASS' 'V1_2_BENEFIT_EXPERIMENT=BLOCKED'
 
@@ -171,6 +172,7 @@ rc0-qualification:
 	$(MAKE) inspect-ci inspect-bench evidence-ci evidence-bench proposal-ci proposal-bench
 	$(MAKE) perception-bench
 	$(MAKE) r22-corpus-verify operational-memory-bench
+	$(MAKE) r23b-corpus-verify contextual-novelty-bench
 	$(MAKE) bench shadow-bench
 	$(MAKE) rc0-audit
 	@printf '%s\n' 'RC0_QUALIFICATION_COMMANDS=PASS' 'V1_2_BENEFIT_EXPERIMENT=BLOCKED'
