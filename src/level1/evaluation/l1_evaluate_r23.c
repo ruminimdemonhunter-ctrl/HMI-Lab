@@ -636,6 +636,12 @@ static Lock read_lock(const char *path) {
         } else if (strcmp(line, "novelty_threshold") == 0) {
             if (seen_threshold) fail("duplicate threshold", path);
             lock.novelty_threshold=(uint16_t)decimal(value,1024,path); seen_threshold=true;
+        } else if (strcmp(line, "novelty_cap") == 0 ||
+                   strcmp(line, "machine_a_tuned_cap") == 0 ||
+                   strcmp(line, "machine_b_tuned_cap") == 0) {
+            if (strcmp(value, "PASS") != 0 &&
+                strcmp(value, "CALIBRATION_CAP_NOT_MET") != 0)
+                fail("bad calibration cap status", path);
         } else if (strcmp(line, "machine_a_tuned") == 0 || strcmp(line, "machine_b_tuned") == 0) {
             size_t index = line[8] == 'a' ? 0U : 1U;
             if ((index == 0U && seen_a) || (index == 1U && seen_b)) fail("duplicate tuned config", path);
