@@ -1,0 +1,14 @@
+{
+  "inputs": "eligible quality=OK observations only",
+  "row_rule": "positive if any threshold is met; otherwise normal",
+  "schema": "HMI_L1_R23_FIXED_COMPARATOR_V1",
+  "scientific_use": "R2.3 only; not scored or revised in R2.2",
+  "status": "frozen_before_r2.2_memory_implementation",
+  "thresholds_bp": {
+    "cpu_some": 6000,
+    "io_full": 2000,
+    "memory_full": 400
+  },
+  "tuning": "none; values fixed before learner implementation and held-out scoring",
+  "window_rule": "positive if at least 5 eligible rows are positive; abstain if fewer than 10 eligible rows"
+}

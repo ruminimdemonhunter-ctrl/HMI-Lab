@@ -67,6 +67,32 @@ learned baseline, forecast, action coupling or resource optimization. Run its
 known-answer and isolation tests with `./l1_perception_test`; run the isolated
 five-repetition cost/RSS measurement with `make perception-bench`.
 
+## R2.2 bounded operational memory
+
+`l1_operational_memory_step()` is a separate, pure C11 observer that retains
+three fixed eight-bin histograms of validated CPU-some, memory-full and
+I/O-full PSI-style values. It accepts only explicit `L1_PQ_OK` samples with
+strictly monotonic, at-least-one-second spacing. Four observed five-minute
+buckets and 256 accepted samples are required before the summary reports
+`SUPPORTED`; gaps never manufacture support. Per-channel halving at a sum of
+1024 provides bounded forgetting. Clock regression or explicit reset clears
+only this observer.
+
+The observer has no filesystem, clock, heap, policy, action or actuator
+interface. It cannot alter the protected core or shadow learner. Its 80-byte
+little-endian V1 checkpoint has strict structural checks and CRC32 corruption
+detection; CRC32 is not authentication. A restored summary remains
+`RESTORED_UNVERIFIED` until 128 new accepted samples span two newly observed
+five-minute buckets. The existing 72-byte protected-core V2 state is unchanged.
+
+R2.2 establishes bounded deterministic aggregation only. Different states for
+the two synthetic machines do not demonstrate anomaly utility, machine
+individuality, adaptive intelligence or resource savings; those questions
+remain unmeasured. Verify the committed corpus identities with
+`make r22-corpus-verify`, run unit and isolation coverage with
+`./l1_operational_memory_test`, and run the frozen optimized resource contract
+with `make operational-memory-bench`.
+
 ## Memory-driven behavior / safe policy proposal
 
 `L1Core` contains a compact `L1Policy` (behavior memory) and bounded working
@@ -185,6 +211,11 @@ disposable synchronized `src/` tree. See `docs/L1-v0.3-memory-state.md`.
   classifier, reporting per-run and min/median/max process CPU cost per call,
   a separately sampled individual-call CPU p95, process RSS, result size and
   zero persistent classifier state.
+- `make r22-corpus-verify` — rebuild and verify the committed deterministic
+  R2.2 two-machine corpus and SHA-256 manifest without running a learner.
+- `make operational-memory-bench` — five optimized ten-million-call
+  measurements of perception alone and perception plus R2.2 memory, including
+  separately sampled individual-call p95, process RSS and state sizes.
 - `make proposal-ci` — canonical/adversarial parsing, default-deny
   authorization, filesystem replacement, byte-isolation, HOLD reset and
   rollback tests for the offline V1.1 boundary.
@@ -337,6 +368,10 @@ l1_shadow.h/.c   Fixed-size delayed-outcome shadow learner
 l1_perception.h/.c Pure stateless R2.1 PSI condition description
 l1_perception_test.c Frozen masks, quality, boundaries and core isolation
 l1_perception_bench.c Bounded classifier CPU/p95/RSS measurement
+l1_operational_memory.h/.c Pure bounded R2.2 histogram memory and 80B codec
+l1_operational_memory_test.c Quantization, timing, decay, restore and isolation
+l1_operational_memory_corpus.c Frozen train/calibration determinism replay
+l1_operational_memory_bench.c Split component CPU/p95/RSS measurement
 l1_policy.c      Strict L2-style behavior-memory proposal parser
 l1_proposal.h/.c V1.1 canonical offline proposal boundary (default deny)
 l1_proposal_check.c Offline validity CLI; no production apply authority
