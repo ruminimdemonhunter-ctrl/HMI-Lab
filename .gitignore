@@ -29,6 +29,10 @@
 /src/level1/l1_evaluate
 /src/level1/l1_evaluate_v05
 /src/level1/l1_evaluate_v06
+/src/level2/l2_fixture_cli
+/src/level2/l2_test
+/src/level2/l2_l1_isolation_test
+/src/level2/l2_bench
 *.eval.csv
 *.eval.policy
 *.eval.manifest
