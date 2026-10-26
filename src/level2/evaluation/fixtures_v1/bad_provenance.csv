@@ -1,0 +1,2 @@
+schema,seq,monotonic_ms,quality,event,workspace,role,activity,l1_condition,provenance
+HMI_L2_EVENT_V1,1,1000,OK,CONTEXT,0,NONE,INTERACTIVE,QUIET,HOST
