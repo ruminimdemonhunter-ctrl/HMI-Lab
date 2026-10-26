@@ -8,6 +8,11 @@ if grep -En '/proc|/sys|cgroup|sched_|socket[[:space:]]*\(|ioctl[[:space:]]*\(|s
     exit 1
 fi
 
+if grep -En '/proc|/sys|cgroup|sched_|socket[[:space:]]*\(|ioctl[[:space:]]*\(|system[[:space:]]*\(|fork[[:space:]]*\(|exec[[:alnum:]_]*[[:space:]]*\(|open[[:space:]]*\(|fopen[[:space:]]*\(|write[[:space:]]*\(|malloc[[:space:]]*\(|calloc[[:space:]]*\(|realloc[[:space:]]*\(|free[[:space:]]*\(|clock_gettime[[:space:]]*\(' l1_perception.c >/dev/null; then
+    echo "stateless perception contains a forbidden external interface" >&2
+    exit 1
+fi
+
 if grep -En 'cgroup|sched_|/sys/|/dev/|ioctl[[:space:]]*\(|setpriority[[:space:]]*\(' l1_inspect.c l1_evidence.c l1_proposal_check.c >/dev/null; then
     echo "offline inspection boundary contains a forbidden control interface" >&2
     exit 1

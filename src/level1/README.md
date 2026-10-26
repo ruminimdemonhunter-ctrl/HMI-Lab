@@ -38,6 +38,35 @@ Possible recommendations:
 
 Recommendations do **nothing** to the OS in this release.
 
+## R2.1 descriptive perception lane
+
+`l1_perception_classify()` is a separate, pure C11 classifier for a copied
+`L1Observation`. It describes the current PSI stall sample as `UNKNOWN`,
+`QUIET`, one of the three single-resource pressure states, `MIXED_PRESSURE`,
+or `UNRELIABLE`. It has no clock, heap, I/O, global state, policy access,
+learning state or action authority.
+
+The fixed descriptive boundaries are CPU `some >= 3000 bp`, memory
+`full >= 100 bp`, and I/O `full >= 500 bp`. These are immutable R2.1
+descriptors, not CPU/RAM utilization, device health, anomaly detection, or a
+replacement for the protected reflex policy. `QUIET` only means none of those
+three PSI boundaries was reached. Policy generation, confirmation and prior
+core history can legitimately make the protected action differ from the
+description; the published advisory must never be erased or changed by
+perception.
+
+Input quality is explicit caller metadata. The stateless classifier cannot
+infer a missing observation, stale sample, clock regression or counter reset
+from one observation. `ABSENT` produces `UNKNOWN`; invalid, stale, regressed,
+reset, malformed or out-of-range input produces `UNRELIABLE`. Until a future
+separately verified adapter exists, that quality label must not be treated as
+independently authenticated evidence.
+
+R2.1 contains no novelty score, confidence estimate, machine individuality,
+learned baseline, forecast, action coupling or resource optimization. Run its
+known-answer and isolation tests with `./l1_perception_test`; run the isolated
+five-repetition cost/RSS measurement with `make perception-bench`.
+
 ## Memory-driven behavior / safe policy proposal
 
 `L1Core` contains a compact `L1Policy` (behavior memory) and bounded working
@@ -152,6 +181,10 @@ disposable synchronized `src/` tree. See `docs/L1-v0.3-memory-state.md`.
   hysteresis, priority, and PSI parser tests.
 - `make test-ndebug` — rebuild and rerun checks with `-DNDEBUG`.
 - `make sanitize` — ASan/UBSan/leak-enabled test build.
+- `make perception-bench` — five optimized measurements of the stateless R2.1
+  classifier, reporting per-run and min/median/max process CPU cost per call,
+  a separately sampled individual-call CPU p95, process RSS, result size and
+  zero persistent classifier state.
 - `make proposal-ci` — canonical/adversarial parsing, default-deny
   authorization, filesystem replacement, byte-isolation, HOLD reset and
   rollback tests for the offline V1.1 boundary.
@@ -301,6 +334,9 @@ l1_linux.c       Read-only Linux PSI adapter
 l1_linux.h       Bounded persistent read-only PSI reader interface
 l1_linux_test.c  One-shot/persistent PSI equivalence and failure tests
 l1_shadow.h/.c   Fixed-size delayed-outcome shadow learner
+l1_perception.h/.c Pure stateless R2.1 PSI condition description
+l1_perception_test.c Frozen masks, quality, boundaries and core isolation
+l1_perception_bench.c Bounded classifier CPU/p95/RSS measurement
 l1_policy.c      Strict L2-style behavior-memory proposal parser
 l1_proposal.h/.c V1.1 canonical offline proposal boundary (default deny)
 l1_proposal_check.c Offline validity CLI; no production apply authority
