@@ -57,6 +57,7 @@ typedef struct {
     uint32_t excluded_range;
     uint32_t excluded_time;
     uint32_t excluded_reason;
+    uint32_t metadata_eligibility_mismatches;
 } Dataset;
 
 typedef struct {
@@ -77,6 +78,7 @@ typedef struct {
     FixedConfig tuned[2];
     bool strongest_fixed[2];
     uint64_t expected_fingerprint;
+    bool study_invalid;
 } Lock;
 
 static const char data_header[] =
@@ -304,10 +306,11 @@ static void load_episodes(const char *path, char machine, const char *split,
                 if (row->eligible) ++eligible;
             }
         }
-        if (seen != episode->end_row - episode->start_row + 1U ||
-            eligible != episode->declared_eligible) {
-            fail("episode eligibility mismatch", path);
-        }
+        uint16_t span = (uint16_t)(episode->end_row - episode->start_row + 1U);
+        if (seen != span || episode->declared_eligible != span)
+            fail("episode range/declared count mismatch", path);
+        if (eligible != episode->declared_eligible)
+            ++dataset->metadata_eligibility_mismatches;
     }
 }
 
@@ -545,10 +548,12 @@ static void calibration(const char *corpus) {
                       tuned_metrics[index]);
         printf("EXCLUSIONS phase=calibration machine=%c quality=%" PRIu32
                " valid=%" PRIu32 " range=%" PRIu32 " time=%" PRIu32
-               " reason=%" PRIu32 "\n", machines[index],
+               " reason=%" PRIu32 " metadata_eligibility_mismatches=%" PRIu32
+               "\n", machines[index],
                datasets[index].excluded_quality, datasets[index].excluded_valid,
                datasets[index].excluded_range, datasets[index].excluded_time,
-               datasets[index].excluded_reason);
+               datasets[index].excluded_reason,
+               datasets[index].metadata_eligibility_mismatches);
     }
     printf("CALIBRATION_LOCK_VALUES novelty_threshold=%u novelty_cap=%s"
            " a_tuned=%u|%u|%u|%u a_tuned_cap=%s a_strongest=%s"
@@ -587,6 +592,7 @@ static Lock read_lock(const char *path) {
     Lock lock = {0};
     bool seen_schema=false, seen_corpus=false, seen_source=false, seen_eval=false;
     bool seen_threshold=false, seen_a=false, seen_b=false, seen_as=false, seen_bs=false;
+    bool seen_study=false;
     FILE *stream = fopen(path, "rb");
     if (stream == NULL) fail("cannot open calibration lock", path);
     char line[MAX_LINE];
@@ -615,6 +621,12 @@ static Lock read_lock(const char *path) {
         } else if (strcmp(line, "corpus_sha256") == 0) {
             if (seen_corpus || strcmp(value, "f83a7bda572b6319554397ce780a11fa4bc0ffc698249013cedb47ec4d208963") != 0) fail("bad corpus identity", path);
             seen_corpus=true;
+        } else if (strcmp(line, "study_status") == 0) {
+            if (seen_study || (strcmp(value, "VALID") != 0 &&
+                strcmp(value, "INVALID_EPISODE_ELIGIBILITY_METADATA") != 0))
+                fail("bad study status", path);
+            lock.study_invalid = strcmp(value, "VALID") != 0;
+            seen_study = true;
         } else if (strcmp(line, "novelty_source_sha256") == 0) {
             if (seen_source || !valid_hex64(value)) fail("bad source identity", path);
             seen_source=true;
@@ -648,7 +660,7 @@ static Lock read_lock(const char *path) {
         }
     }
     if (ferror(stream)!=0 || fclose(stream)!=0 || !fingerprint_seen || hash!=lock.expected_fingerprint ||
-        !seen_schema || !seen_corpus || !seen_source || !seen_eval || !seen_threshold ||
+        !seen_schema || !seen_corpus || !seen_study || !seen_source || !seen_eval || !seen_threshold ||
         !seen_a || !seen_b || !seen_as || !seen_bs) fail("incomplete or unbound lock", path);
     if (!contains_u16(novelty_values, NOVELTY_CANDIDATES,
                       lock.novelty_threshold)) fail("threshold outside frozen set", path);
@@ -730,9 +742,11 @@ static MachineGate heldout_machine(const char *corpus, const Lock *lock,
         if(n.tp+n.fn>=5U && n.tp>s.tp) family_win=true;
     }
     printf("MACHINE_GATE machine=%c support=%s strongest=%s noninferior=%s family_win=%s"
-           " checkpoint=%016" PRIx64 " exclusions=%" PRIu32 "|%" PRIu32 "|%" PRIu32 "|%" PRIu32 "|%" PRIu32 "\n",
+           " checkpoint=%016" PRIx64 " exclusions=%" PRIu32 "|%" PRIu32 "|%" PRIu32 "|%" PRIu32 "|%" PRIu32
+           " metadata_eligibility_mismatches=%" PRIu32 "\n",
            machine,support?"PASS":"FAIL",names[strongest],noninferior?"PASS":"FAIL",family_win?"PASS":"FAIL",checkpoint,
-           dataset.excluded_quality,dataset.excluded_valid,dataset.excluded_range,dataset.excluded_time,dataset.excluded_reason);
+           dataset.excluded_quality,dataset.excluded_valid,dataset.excluded_range,dataset.excluded_time,dataset.excluded_reason,
+           dataset.metadata_eligibility_mismatches);
     return (MachineGate){support, noninferior, family_win};
 }
 
@@ -741,11 +755,13 @@ static void heldout(const char *corpus, const char *lock_path) {
     MachineGate a=heldout_machine(corpus,&lock,0);
     MachineGate b=heldout_machine(corpus,&lock,1);
     const char *utility;
-    if (!a.support || !b.support) utility="INSUFFICIENT_SUPPORT";
+    if (lock.study_invalid) utility="UNDETERMINED";
+    else if (!a.support || !b.support) utility="INSUFFICIENT_SUPPORT";
     else if (a.noninferior && b.noninferior && (a.family_win || b.family_win)) utility="GO";
     else utility="NO_GO";
-    printf("R23_HELDOUT_COMPLETE no_retuning=YES R2_UTILITY=%s"
-           " R2_INDIVIDUALITY=UNDETERMINED\n",utility);
+    printf("R23_HELDOUT_COMPLETE no_retuning=YES R2_3_STUDY=%s R2_UTILITY=%s"
+           " R2_INDIVIDUALITY=UNDETERMINED\n",
+           lock.study_invalid ? "INVALID" : "VALID", utility);
 }
 
 int main(int argc,char **argv){
