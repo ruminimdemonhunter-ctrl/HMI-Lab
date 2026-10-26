@@ -372,6 +372,12 @@ l1_operational_memory.h/.c Pure bounded R2.2 histogram memory and 80B codec
 l1_operational_memory_test.c Quantization, timing, decay, restore and isolation
 l1_operational_memory_corpus.c Frozen train/calibration determinism replay
 l1_operational_memory_bench.c Split component CPU/p95/RSS measurement
+l1_contextual_novelty.h/.c Pure read-only R2.3b two-sided tail scorer
+l1_contextual_novelty_test.c Equation, abstention and byte-isolation tests
+l1_contextual_novelty_bench.c Combined perception/memory/scorer resource test
+evaluation/l1_evaluate_r23b.c Bounded calibration/locked-evaluation runner
+evaluation/r23b_corpus_v2/ Fresh synthetic contextual corpus and manifests
+evaluation/verify_r23b_corpus.py Independent eligibility and identity verifier
 l1_policy.c      Strict L2-style behavior-memory proposal parser
 l1_proposal.h/.c V1.1 canonical offline proposal boundary (default deny)
 l1_proposal_check.c Offline validity CLI; no production apply authority

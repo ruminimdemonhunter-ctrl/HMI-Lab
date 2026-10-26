@@ -3,8 +3,8 @@ CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Werror -Wpedantic
 CPPFLAGS ?=
 LDLIBS ?=
 
-.PHONY: all test test-ndebug sanitize rc0-audit rc0-ci rc0-qualification r22-corpus-verify operational-memory-bench operational-memory-bench-ci perception-bench perception-bench-ci proposal-ci proposal-bench proposal-bench-ci proposal-bench-sanitize-ci inspect-ci inspect-bench inspect-bench-ci evidence-ci evidence-bench evidence-bench-ci evidence-bench-sanitize-ci bench shadow-bench recorder-bench recorder-bench-ci psi-bench diagnostics-bench replay evaluation-ci evaluation-train evaluation-heldout evaluation-v05-ci evaluation-v05-development evaluation-v05-train evaluation-v05-heldout evaluation-v06-ci evaluation-v06-development evaluation-v06-train evaluation-v06-heldout evaluation-v07-ci evaluation-v07-development evaluation-v07-verification evaluation-v07-heldout clean
-all: l1_monitor l1_trace_record l1_inspect l1_inspect_bench l1_evidence l1_evidence_bench l1_proposal_check l1_proposal_test l1_proposal_bench l1_rc0_test l1_perception_test l1_perception_bench l1_operational_memory_test l1_operational_memory_bench l1_operational_memory_corpus l1_diagnostics l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_linux_test l1_inspect_test l1_recorder_bench l1_psi_bench l1_bench l1_shadow_bench l1_replay l1_evaluate l1_evaluate_v05 l1_evaluate_v06
+.PHONY: all test test-ndebug sanitize rc0-audit rc0-ci rc0-qualification r22-corpus-verify r23b-corpus-verify contextual-novelty-bench contextual-novelty-bench-ci evaluation-r23b-calibration operational-memory-bench operational-memory-bench-ci perception-bench perception-bench-ci proposal-ci proposal-bench proposal-bench-ci proposal-bench-sanitize-ci inspect-ci inspect-bench inspect-bench-ci evidence-ci evidence-bench evidence-bench-ci evidence-bench-sanitize-ci bench shadow-bench recorder-bench recorder-bench-ci psi-bench diagnostics-bench replay evaluation-ci evaluation-train evaluation-heldout evaluation-v05-ci evaluation-v05-development evaluation-v05-train evaluation-v05-heldout evaluation-v06-ci evaluation-v06-development evaluation-v06-train evaluation-v06-heldout evaluation-v07-ci evaluation-v07-development evaluation-v07-verification evaluation-v07-heldout clean
+all: l1_monitor l1_trace_record l1_inspect l1_inspect_bench l1_evidence l1_evidence_bench l1_proposal_check l1_proposal_test l1_proposal_bench l1_rc0_test l1_perception_test l1_perception_bench l1_operational_memory_test l1_operational_memory_bench l1_operational_memory_corpus l1_contextual_novelty_test l1_contextual_novelty_bench l1_evaluate_r23b l1_diagnostics l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_linux_test l1_inspect_test l1_recorder_bench l1_psi_bench l1_bench l1_shadow_bench l1_replay l1_evaluate l1_evaluate_v05 l1_evaluate_v06
 
 l1_monitor: l1_main.c l1_core.c l1_shadow.c l1_policy.c l1_state.c l1_linux.c l1.h l1_shadow.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ l1_main.c l1_core.c l1_shadow.c l1_policy.c l1_state.c l1_linux.c $(LDLIBS)
@@ -54,6 +54,15 @@ l1_operational_memory_bench: l1_operational_memory_bench.c l1_operational_memory
 l1_operational_memory_corpus: l1_operational_memory_corpus.c l1_operational_memory.c l1_operational_memory.h l1_perception.h l1.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ l1_operational_memory_corpus.c l1_operational_memory.c $(LDLIBS)
 
+l1_contextual_novelty_test: l1_contextual_novelty_test.c l1_contextual_novelty.c l1_operational_memory.c l1_perception.c l1_core.c l1_shadow.c l1_contextual_novelty.h l1_operational_memory.h l1_perception.h l1_shadow.h l1.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ l1_contextual_novelty_test.c l1_contextual_novelty.c l1_operational_memory.c l1_perception.c l1_core.c l1_shadow.c $(LDLIBS)
+
+l1_contextual_novelty_bench: l1_contextual_novelty_bench.c l1_contextual_novelty.c l1_operational_memory.c l1_perception.c l1_contextual_novelty.h l1_operational_memory.h l1_perception.h l1.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ l1_contextual_novelty_bench.c l1_contextual_novelty.c l1_operational_memory.c l1_perception.c $(LDLIBS)
+
+l1_evaluate_r23b: evaluation/l1_evaluate_r23b.c l1_contextual_novelty.c l1_operational_memory.c l1_contextual_novelty.h l1_operational_memory.h l1_perception.h l1.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ evaluation/l1_evaluate_r23b.c l1_contextual_novelty.c l1_operational_memory.c $(LDLIBS)
+
 l1_test: l1_test.c l1_core.c l1_policy.c l1_linux.c l1.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ l1_test.c l1_core.c l1_policy.c l1_linux.c $(LDLIBS)
 
@@ -99,7 +108,7 @@ l1_evaluate_v06: evaluation/l1_evaluate_v06.c l1_core.c l1_shadow.c l1_policy.c 
 l1_diagnostics: evaluation/l1_diagnostics.c l1_core.c l1_shadow.c l1_trace.c l1.h l1_shadow.h l1_trace.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ evaluation/l1_diagnostics.c l1_core.c l1_shadow.c l1_trace.c $(LDLIBS) -lm
 
-test: l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_linux_test l1_inspect l1_inspect_test l1_evidence l1_evidence_bench l1_proposal_check l1_proposal_test l1_proposal_bench l1_rc0_test l1_perception_test l1_operational_memory_test l1_operational_memory_corpus l1_trace_record l1_diagnostics l1_recorder_bench l1_psi_bench l1_bench l1_shadow_bench l1_replay l1_evaluate l1_evaluate_v05 l1_evaluate_v06
+test: l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_linux_test l1_inspect l1_inspect_test l1_evidence l1_evidence_bench l1_proposal_check l1_proposal_test l1_proposal_bench l1_rc0_test l1_perception_test l1_operational_memory_test l1_operational_memory_corpus l1_contextual_novelty_test l1_evaluate_r23b l1_trace_record l1_diagnostics l1_recorder_bench l1_psi_bench l1_bench l1_shadow_bench l1_replay l1_evaluate l1_evaluate_v05 l1_evaluate_v06
 	./l1_test
 	./l1_trace_test
 	./l1_state_test
@@ -115,6 +124,8 @@ test: l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_linux
 	./l1_perception_test
 	./l1_operational_memory_test
 	./l1_operational_memory_corpus evaluation/r22_corpus_v1/machine_a_train.csv evaluation/r22_corpus_v1/machine_a_calibration.csv evaluation/r22_corpus_v1/machine_b_train.csv evaluation/r22_corpus_v1/machine_b_calibration.csv
+	./l1_contextual_novelty_test
+	sh ./r23b_args_test.sh
 	sh ./proposal_args_test.sh
 	sh ./proposal_bench_args_test.sh
 	sh ./trace_args_test.sh
@@ -145,6 +156,7 @@ rc0-ci:
 	$(MAKE) evidence-ci evidence-bench-ci proposal-ci proposal-bench-ci
 	$(MAKE) perception-bench-ci
 	$(MAKE) r22-corpus-verify operational-memory-bench-ci
+	$(MAKE) r23b-corpus-verify contextual-novelty-bench-ci
 	$(MAKE) rc0-audit
 	@printf '%s\n' 'RC0_CI=PASS' 'V1_2_BENEFIT_EXPERIMENT=BLOCKED'
 
@@ -160,6 +172,7 @@ rc0-qualification:
 	$(MAKE) inspect-ci inspect-bench evidence-ci evidence-bench proposal-ci proposal-bench
 	$(MAKE) perception-bench
 	$(MAKE) r22-corpus-verify operational-memory-bench
+	$(MAKE) r23b-corpus-verify contextual-novelty-bench
 	$(MAKE) bench shadow-bench
 	$(MAKE) rc0-audit
 	@printf '%s\n' 'RC0_QUALIFICATION_COMMANDS=PASS' 'V1_2_BENEFIT_EXPERIMENT=BLOCKED'
@@ -172,6 +185,18 @@ perception-bench-ci: l1_perception_bench
 
 r22-corpus-verify:
 	python3 evaluation/verify_r22_corpus.py --corpus evaluation/r22_corpus_v1
+
+r23b-corpus-verify:
+	python3 evaluation/verify_r23b_corpus.py --corpus evaluation/r23b_corpus_v2
+
+contextual-novelty-bench: l1_contextual_novelty_bench
+	./l1_contextual_novelty_bench 5 10000000
+
+contextual-novelty-bench-ci: l1_contextual_novelty_bench
+	./l1_contextual_novelty_bench 1 10000
+
+evaluation-r23b-calibration: l1_evaluate_r23b r23b-corpus-verify
+	./l1_evaluate_r23b calibrate evaluation/r23b_corpus_v2
 
 operational-memory-bench: l1_operational_memory_bench
 	./l1_operational_memory_bench 5 10000000
@@ -292,4 +317,4 @@ evaluation-v07-heldout: l1_diagnostics
 	./l1_diagnostics heldout $(EVAL_REPETITIONS)
 
 clean:
-	rm -f l1_monitor l1_trace_record l1_inspect l1_inspect_bench l1_evidence l1_evidence_bench l1_proposal_check l1_proposal_test l1_proposal_bench l1_rc0_test l1_perception_test l1_perception_bench l1_operational_memory_test l1_operational_memory_bench l1_operational_memory_corpus l1_diagnostics l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_linux_test l1_inspect_test l1_recorder_bench l1_psi_bench l1_bench l1_shadow_bench l1_replay l1_evaluate l1_evaluate_v05 l1_evaluate_v06
+	rm -f l1_monitor l1_trace_record l1_inspect l1_inspect_bench l1_evidence l1_evidence_bench l1_proposal_check l1_proposal_test l1_proposal_bench l1_rc0_test l1_perception_test l1_perception_bench l1_operational_memory_test l1_operational_memory_bench l1_operational_memory_corpus l1_contextual_novelty_test l1_contextual_novelty_bench l1_evaluate_r23b l1_diagnostics l1_test l1_trace_test l1_state_test l1_shadow_test l1_record_test l1_linux_test l1_inspect_test l1_recorder_bench l1_psi_bench l1_bench l1_shadow_bench l1_replay l1_evaluate l1_evaluate_v05 l1_evaluate_v06

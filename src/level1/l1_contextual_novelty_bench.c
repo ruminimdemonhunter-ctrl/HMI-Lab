@@ -1,0 +1,20 @@
+#define _POSIX_C_SOURCE 200809L
+#include "l1_contextual_novelty.h"
+
+#include <errno.h>
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/resource.h>
+#include <time.h>
+
+enum { MIN_CALLS=10000, MAX_CALLS=100000000, MAX_REPETITIONS=100, MAX_SAMPLES=50000 };
+static uint64_t bounded(const char *s,uint64_t low,uint64_t high,const char *name){char *end=NULL;errno=0;unsigned long long v=strtoull(s,&end,10);if(errno||!s[0]||s[0]=='-'||end==s||*end||v<low||v>high){fprintf(stderr,"invalid %s: expected %"PRIu64"..%"PRIu64"\n",name,low,high);exit(EXIT_FAILURE);}return(uint64_t)v;}
+static uint64_t cpu_ns(void){struct timespec t;if(clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&t)){perror("clock_gettime");exit(EXIT_FAILURE);}return(uint64_t)t.tv_sec*UINT64_C(1000000000)+(uint64_t)t.tv_nsec;}
+static int cmp_double(const void *a,const void *b){double x=*(const double*)a,y=*(const double*)b;return(x>y)-(x<y);}
+static int cmp_u64(const void *a,const void *b){uint64_t x=*(const uint64_t*)a,y=*(const uint64_t*)b;return(x>y)-(x<y);}
+static L1Observation observation(uint64_t i){return(L1Observation){(uint16_t)(i*1103U%10001U),(uint16_t)(i*337U%10001U),(uint16_t)(i*719U%10001U),true};}
+static L1OperationalMemorySummary reference(void){L1OperationalMemory m;l1_operational_memory_init(&m);for(size_t i=0;i<600;i++)(void)l1_operational_memory_step(&m,observation(i),L1_PQ_OK,(uint64_t)(i/100U)*L1_OM_WINDOW_MS+(uint64_t)(i%100U)*L1_OM_SAMPLE_INTERVAL_MS);return l1_operational_memory_summary(&m);}
+int main(int argc,char **argv){if(argc!=3){fprintf(stderr,"usage: %s REPETITIONS CALLS\n",argv[0]);return EXIT_FAILURE;}size_t reps=(size_t)bounded(argv[1],1,MAX_REPETITIONS,"repetitions");uint64_t calls=bounded(argv[2],MIN_CALLS,MAX_CALLS,"calls");double runs[MAX_REPETITIONS];uint64_t samples[MAX_SAMPLES];size_t nsamples=0;volatile uint64_t sink=0;L1OperationalMemorySummary ref=reference();
+    for(size_t r=0;r<reps;r++){L1OperationalMemory live;l1_operational_memory_init(&live);uint64_t start=cpu_ns();for(uint64_t i=0;i<calls;i++){L1Observation o=observation(i);L1PerceptionResult p=l1_perception_classify(o,L1_PQ_OK);L1OperationalMemoryStatus s=l1_operational_memory_step(&live,o,L1_PQ_OK,i*L1_OM_SAMPLE_INTERVAL_MS);L1ContextualNoveltyResult n=l1_contextual_novelty_score(&ref,o,L1_PQ_OK,768);sink+=(uint64_t)p.state+p.pressure_mask+s+n.row_score+n.disposition;}runs[r]=(double)(cpu_ns()-start)/(double)calls;printf("CONTEXTUAL_NOVELTY_RUN repetition=%zu calls=%"PRIu64" combined_cpu_ns_per_call=%.3f\n",r+1,calls,runs[r]);size_t wanted=MAX_SAMPLES/reps;if((uint64_t)wanted>calls)wanted=(size_t)calls;l1_operational_memory_init(&live);for(size_t i=0;i<wanted;i++){L1Observation o=observation(i);uint64_t one=cpu_ns();L1PerceptionResult p=l1_perception_classify(o,L1_PQ_OK);L1OperationalMemoryStatus s=l1_operational_memory_step(&live,o,L1_PQ_OK,(uint64_t)i*L1_OM_SAMPLE_INTERVAL_MS);L1ContextualNoveltyResult n=l1_contextual_novelty_score(&ref,o,L1_PQ_OK,768);samples[nsamples++]=cpu_ns()-one;sink+=(uint64_t)p.state+s+n.row_score;}}
+    qsort(runs,reps,sizeof(*runs),cmp_double);qsort(samples,nsamples,sizeof(*samples),cmp_u64);double median=(reps&1U)?runs[reps/2]:(runs[reps/2-1]+runs[reps/2])/2.0;uint64_t p95=samples[(nsamples*95U+99U)/100U-1U];struct rusage usage;if(getrusage(RUSAGE_SELF,&usage)){perror("getrusage");return EXIT_FAILURE;}printf("CONTEXTUAL_NOVELTY_SUMMARY repetitions=%zu calls_per_repetition=%"PRIu64" combined_cpu_ns=%.3f/%.3f/%.3f individual_samples=%zu combined_individual_p95_ns=%"PRIu64" rss_kib=%ld memory_bytes=%zu summary_bytes=%zu result_bytes=%zu sink=%"PRIu64"\n",reps,calls,runs[0],median,runs[reps-1],nsamples,p95,usage.ru_maxrss,sizeof(L1OperationalMemory),sizeof(L1OperationalMemorySummary),sizeof(L1ContextualNoveltyResult),sink);if(median>1000.0||p95>5000||usage.ru_maxrss>8192||sizeof(L1OperationalMemory)>512){fputs("FAIL: R2.3b resource budget exceeded\n",stderr);return EXIT_FAILURE;}puts("PASS: bounded contextual novelty benchmark");return EXIT_SUCCESS;}
