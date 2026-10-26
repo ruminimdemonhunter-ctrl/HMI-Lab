@@ -372,6 +372,11 @@ l1_operational_memory.h/.c Pure bounded R2.2 histogram memory and 80B codec
 l1_operational_memory_test.c Quantization, timing, decay, restore and isolation
 l1_operational_memory_corpus.c Frozen train/calibration determinism replay
 l1_operational_memory_bench.c Split component CPU/p95/RSS measurement
+evaluation/l1_r23c_support_preflight.c Real R2.2 support/reset/checkpoint gates
+evaluation/l1_r23c_decision_preflight.c Novelty K=5 and mutation gates
+evaluation/verify_r23c_lock.py Exact-byte calibration-lock integrity tests
+evaluation/verify_r23c_probes.py Independent contextual-truth comparison tests
+evaluation/verify_r23c_eligibility.py Post-exclusion metadata regression tests
 l1_policy.c      Strict L2-style behavior-memory proposal parser
 l1_proposal.h/.c V1.1 canonical offline proposal boundary (default deny)
 l1_proposal_check.c Offline validity CLI; no production apply authority
