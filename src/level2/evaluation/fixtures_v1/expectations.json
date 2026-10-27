@@ -1,0 +1,132 @@
+{
+  "fixtures": {
+    "a.csv": {
+      "parse": "ACCEPT",
+      "queries": [
+        "1:CANDIDATE:CODE_EDIT|BUILD_TEST|DOC_VIEW"
+      ],
+      "sessions": {
+        "1": 4
+      },
+      "transitions": {
+        "1": 8
+      }
+    },
+    "b.csv": {
+      "parse": "ACCEPT",
+      "queries": [
+        "1:CANDIDATE:REFERENCES|CANVAS|ASSET_GROUP"
+      ],
+      "sessions": {
+        "1": 4
+      },
+      "transitions": {
+        "1": 12
+      }
+    },
+    "bad_provenance.csv": {
+      "parse": "REJECT"
+    },
+    "capacity.csv": {
+      "capacity_pressure": true,
+      "parse": "ACCEPT",
+      "queries": [
+        "4:CANDIDATE"
+      ]
+    },
+    "cold.csv": {
+      "parse": "ACCEPT",
+      "queries": [
+        "1:NONE:WARMING_UP"
+      ],
+      "sessions": {
+        "1": 1
+      },
+      "transitions": {
+        "1": 2
+      }
+    },
+    "context_only.csv": {
+      "parse": "ACCEPT",
+      "queries": [
+        "1:NONE:WARMING_UP"
+      ],
+      "sessions": {},
+      "transitions": {}
+    },
+    "gapped.csv": {
+      "aborts": 1,
+      "parse": "ACCEPT",
+      "queries": [
+        "1:NONE:WARMING_UP"
+      ],
+      "sessions": {},
+      "transitions": {}
+    },
+    "invalid.csv": {
+      "aborts": 1,
+      "parse": "ACCEPT",
+      "queries": [
+        "1:NONE:WARMING_UP"
+      ],
+      "sessions": {},
+      "transitions": {}
+    },
+    "mixed.csv": {
+      "parse": "ACCEPT",
+      "queries": [
+        "1:CANDIDATE:CODE_EDIT|BUILD_TEST|DOC_VIEW",
+        "2:CANDIDATE:REFERENCES|CANVAS|ASSET_GROUP"
+      ],
+      "sessions": {
+        "1": 3,
+        "2": 3
+      },
+      "transitions": {
+        "1": 6,
+        "2": 9
+      }
+    },
+    "pressure_block.csv": {
+      "parse": "ACCEPT",
+      "queries": [
+        "1:BLOCKED:RESOURCE_CONSTRAINED"
+      ],
+      "sessions": {
+        "1": 4
+      },
+      "transitions": {
+        "1": 8
+      }
+    },
+    "reset_late.csv": {
+      "parse": "ACCEPT",
+      "queries": [
+        "1:NONE:WARMING_UP"
+      ],
+      "resets": 1,
+      "sessions": {
+        "1": 2
+      },
+      "transitions": {
+        "1": 4
+      }
+    },
+    "saturation_100k.csv": {
+      "edge_occurrences": 70000,
+      "node_occurrences": 80000,
+      "parse": "ACCEPT",
+      "rows": 100000,
+      "triple_occurrences": 60000
+    },
+    "stale.csv": {
+      "parse": "ACCEPT",
+      "queries": [
+        "1:NONE:STALE_CONTEXT"
+      ],
+      "sessions": {},
+      "transitions": {}
+    }
+  },
+  "schema": "HMI_L2_FIXTURE_EXPECTATIONS_V1"
+}

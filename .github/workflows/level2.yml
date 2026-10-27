@@ -1,0 +1,35 @@
+name: Level 2 V0.1 C11 validation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  l2-build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/level2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Strict, NDEBUG, fixtures, isolation and bounded benchmark
+        run: make ci
+      - name: Protected Level 1 RC0 nonregression
+        run: make -C ../level1 rc0-ci
+
+  l2-sanitizers:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/level2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Address, undefined-behavior and leak sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: make sanitize

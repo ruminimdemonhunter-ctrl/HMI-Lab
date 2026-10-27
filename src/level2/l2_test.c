@@ -1,0 +1,104 @@
+#include "l2_parser.h"
+#include "l2_state.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define CHECK(c) do{if(!(c)){fprintf(stderr,"L2_TEST_FAIL line=%d check=%s\n",__LINE__,#c);exit(EXIT_FAILURE);}}while(0)
+
+static void assert_unique_relationships(const L2State *s){
+    for(size_t i=0;i<L2_NODE_CAP;i++)for(size_t j=i+1U;j<L2_NODE_CAP;j++)if(s->nodes[i].used&&s->nodes[j].used)CHECK(s->nodes[i].workspace!=s->nodes[j].workspace||s->nodes[i].role!=s->nodes[j].role);
+    for(size_t i=0;i<L2_EDGE_CAP;i++)for(size_t j=i+1U;j<L2_EDGE_CAP;j++)if(s->edges[i].used&&s->edges[j].used)CHECK(s->edges[i].workspace!=s->edges[j].workspace||s->edges[i].from_role!=s->edges[j].from_role||s->edges[i].to_role!=s->edges[j].to_role);
+    for(size_t i=0;i<L2_TRIPLE_CAP;i++)for(size_t j=i+1U;j<L2_TRIPLE_CAP;j++)if(s->triples[i].used&&s->triples[j].used)CHECK(s->triples[i].workspace!=s->triples[j].workspace||s->triples[i].r1!=s->triples[j].r1||s->triples[i].r2!=s->triples[j].r2||s->triples[i].r3!=s->triples[j].r3);
+}
+typedef struct { L2State state; L2QueryResult queries[4]; size_t query_count,rows; } Replay;
+static Replay replay(const char *root,const char *name,bool expect_accept){char path[512];CHECK(snprintf(path,sizeof(path),"%s/%s",root,name)>0);FILE *f=fopen(path,"rb");CHECK(f);char line[L2_MAX_LINE+2U];Replay x;memset(&x,0,sizeof(x));l2_init(&x.state);bool ok=fgets(line,sizeof(line),f)&&l2_parse_header(line,strlen(line));while(ok&&fgets(line,sizeof(line),f)){x.rows++;L2Event e;ok=l2_parse_event_line(line,strlen(line),&e);if(!ok)break;L2QueryResult q;L2StepStatus status=l2_step(&x.state,&e,&q);if(status==L2_STEP_REJECTED){ok=false;break;}if(e.kind==L2_EVENT_SESSION_END&&status==L2_STEP_ACCEPTED)assert_unique_relationships(&x.state);if(status==L2_STEP_QUERY_RESULT){CHECK(x.query_count<4);x.queries[x.query_count++]=q;}}CHECK(!ferror(f));CHECK(fclose(f)==0);CHECK(ok==expect_accept);return x;}
+static void expect_candidate(L2QueryResult r,uint8_t workspace,L2Role a,L2Role b,L2Role c){CHECK(r.status==L2_RESULT_CANDIDATE&&r.reason==L2_REASON_NONE&&r.workspace==workspace&&r.roles[0]==a&&r.roles[1]==b&&r.roles[2]==c&&r.requires_user_approval);}
+static L2Event event(uint64_t seq,uint64_t time,L2EventKind kind,uint8_t workspace,L2Role role){return(L2Event){seq,time,L2_QUALITY_OK,kind,workspace,role,L2_ACTIVITY_NONE,L2_CONDITION_NONE,true};}
+static void parser_negatives(void){L2Event e;static const char good[]="HMI_L2_EVENT_V1,1,1,OK,QUERY,1,NONE,NONE,NONE,SIMULATED\n";CHECK(l2_parse_event_line(good,sizeof(good)-1,&e));const char *bad[]={"HMI_L2_EVENT_V1,01,1,OK,QUERY,1,NONE,NONE,NONE,SIMULATED\n","HMI_L2_EVENT_V1,1,-1,OK,QUERY,1,NONE,NONE,NONE,SIMULATED\n","HMI_L2_EVENT_V1,1,1,OK,QUERY,1,NONE,NONE,NONE,HOST\n","HMI_L2_EVENT_V1,1,1,OK,QUERY,1,NONE,NONE,NONE,SIMULATED","HMI_L2_EVENT_V1,1,1,OK,QUERY,1,NONE,NONE,NONE,SIMULATED,EXTRA\n","HMI_L2_EVENT_V1,18446744073709551616,1,OK,QUERY,1,NONE,NONE,NONE,SIMULATED\n","HMI_L2_EVENT_V1,1,1,OK,QUERY,5,NONE,NONE,NONE,SIMULATED\n","HMI_L2_EVENT_V1,1,1,OK,ROLE,0,CODE_EDIT,NONE,NONE,SIMULATED\n","HMI_L2_EVENT_V1,1,1,RESET,QUERY,1,NONE,NONE,NONE,SIMULATED\n","HMI_L2_EVENT_V1,1,1,OK,QUERY,1,NONE,NONE,NONE,SIMULATED \n"};for(size_t i=0;i<sizeof(bad)/sizeof(bad[0]);i++){if(l2_parse_event_line(bad[i],strlen(bad[i]),&e)){fprintf(stderr,"parser accepted negative fixture index=%zu\n",i);CHECK(false);}}}
+static void parser_binary_negatives(void){
+    L2Event e;
+    static const char nul_record[]="HMI_L2_EVENT_V1,1,1,OK,QUERY,1,NONE,NONE,NONE,SIMULATED\0TRAILING\n";
+    CHECK(!l2_parse_event_line(nul_record,sizeof(nul_record)-1U,&e));
+    static const unsigned char controls[]={1U,31U,127U,128U,255U};
+    static const char prefix[]="HMI_L2_EVENT_V1,1,1,OK,QUERY,1,NONE,NONE,NONE,SIMULATED";
+    for(size_t i=0;i<sizeof(controls);i++){
+        char record[sizeof(prefix)+2U];
+        memcpy(record,prefix,sizeof(prefix)-1U);
+        record[sizeof(prefix)-1U]=(char)controls[i];
+        record[sizeof(prefix)]='\n';
+        CHECK(!l2_parse_event_line(record,sizeof(prefix)+1U,&e));
+    }
+}
+static void core_adversarial(void){L2State s;l2_init(&s);L2Event begin=event(1,1,L2_EVENT_SESSION_BEGIN,1,L2_ROLE_NONE);CHECK(l2_step(&s,&begin,NULL)==L2_STEP_ACCEPTED);L2Event wrong=event(2,2,L2_EVENT_ROLE,2,L2_ROLE_CODE_EDIT);CHECK(l2_step(&s,&wrong,NULL)==L2_STEP_REJECTED&&!s.session_open);l2_init(&s);begin=event(1,1,L2_EVENT_SESSION_BEGIN,1,L2_ROLE_NONE);CHECK(l2_step(&s,&begin,NULL)==L2_STEP_ACCEPTED);for(uint64_t i=0;i<8;i++){L2Event r=event(2+i,2+i,L2_EVENT_ROLE,1,L2_ROLE_CODE_EDIT);CHECK(l2_step(&s,&r,NULL)==L2_STEP_ACCEPTED);}L2Event ninth=event(10,10,L2_EVENT_ROLE,1,L2_ROLE_CODE_EDIT);CHECK(l2_step(&s,&ninth,NULL)==L2_STEP_REJECTED&&!s.session_open);l2_init(&s);L2Event gap=event(1,1,L2_EVENT_GAP,0,L2_ROLE_NONE);CHECK(l2_step(&s,&gap,NULL)==L2_STEP_ACCEPTED);gap.seq=1;gap.monotonic_ms=2;CHECK(l2_step(&s,&gap,NULL)==L2_STEP_REJECTED);l2_init(&s);L2Event max=event(UINT64_MAX,1,L2_EVENT_GAP,0,L2_ROLE_NONE);s.expected_seq=UINT64_MAX;CHECK(l2_step(&s,&max,NULL)==L2_STEP_ACCEPTED);max.monotonic_ms=2;CHECK(l2_step(&s,&max,NULL)==L2_STEP_REJECTED);}
+static void invalid_input_aborts_session(void){L2State s;l2_init(&s);L2Event begin=event(1,1,L2_EVENT_SESSION_BEGIN,1,L2_ROLE_NONE);CHECK(l2_step(&s,&begin,NULL)==L2_STEP_ACCEPTED);L2Event malformed=event(2,2,L2_EVENT_ROLE,1,(L2Role)255);CHECK(l2_step(&s,&malformed,NULL)==L2_STEP_REJECTED&&!s.session_open&&s.invalid_events==1);for(size_t i=0;i<L2_WORKSPACES;i++)CHECK(s.workspaces[i].completed_sessions==0&&s.workspaces[i].accepted_transitions==0);l2_init(&s);CHECK(l2_step(&s,&begin,NULL)==L2_STEP_ACCEPTED);L2Event bad_quality=event(2,2,L2_EVENT_ROLE,1,L2_ROLE_CODE_EDIT);bad_quality.quality=L2_QUALITY_INVALID;CHECK(l2_step(&s,&bad_quality,NULL)==L2_STEP_INVALID_QUALITY&&!s.session_open&&s.invalid_events==1);l2_init(&s);L2Event context={1,10,L2_QUALITY_OK,L2_EVENT_CONTEXT,0,L2_ROLE_NONE,L2_ACTIVITY_INTERACTIVE,L2_CONDITION_QUIET,true};CHECK(l2_step(&s,&context,NULL)==L2_STEP_ACCEPTED);context.seq=2;context.monotonic_ms=9;CHECK(l2_step(&s,&context,NULL)==L2_STEP_REJECTED&&!s.context_valid&&s.context==L2_CONTEXT_TRANSITION);}
+static void aging_is_exact(void){L2State s;l2_init(&s);uint64_t seq=1,time=1;for(size_t session=0;session<16;session++){L2Event begin=event(seq++,time++,L2_EVENT_SESSION_BEGIN,1,L2_ROLE_NONE);CHECK(l2_step(&s,&begin,NULL)==L2_STEP_ACCEPTED);const L2Role roles[3]={L2_ROLE_CODE_EDIT,L2_ROLE_BUILD_TEST,L2_ROLE_DOC_VIEW};for(size_t i=0;i<3;i++){L2Event role=event(seq++,time++,L2_EVENT_ROLE,1,roles[i]);CHECK(l2_step(&s,&role,NULL)==L2_STEP_ACCEPTED);}L2Event end=event(seq++,time++,L2_EVENT_SESSION_END,1,L2_ROLE_NONE);CHECK(l2_step(&s,&end,NULL)==L2_STEP_ACCEPTED);}CHECK(s.completed_session_generation==16&&s.workspaces[0].completed_sessions==8&&s.workspaces[0].accepted_transitions==16);bool triple=false;for(size_t i=0;i<L2_TRIPLE_CAP;i++)if(s.triples[i].used&&s.triples[i].workspace==1){CHECK(s.triples[i].count==8);triple=true;}CHECK(triple);}
+static void complete_three(L2State *s,uint64_t *seq,uint64_t *time,uint8_t workspace){
+    const L2Role roles[3]={L2_ROLE_CODE_EDIT,L2_ROLE_BUILD_TEST,L2_ROLE_DOC_VIEW};
+    L2Event begin=event((*seq)++,(*time)++,L2_EVENT_SESSION_BEGIN,workspace,L2_ROLE_NONE);
+    CHECK(l2_step(s,&begin,NULL)==L2_STEP_ACCEPTED);
+    for(size_t i=0;i<3U;i++){
+        L2Event role=event((*seq)++,(*time)++,L2_EVENT_ROLE,workspace,roles[i]);
+        CHECK(l2_step(s,&role,NULL)==L2_STEP_ACCEPTED);
+    }
+    L2Event end=event((*seq)++,(*time)++,L2_EVENT_SESSION_END,workspace,L2_ROLE_NONE);
+    CHECK(l2_step(s,&end,NULL)==L2_STEP_ACCEPTED);
+    assert_unique_relationships(s);
+}
+static size_t node_matches(const L2State *s,uint8_t workspace,L2Role role,uint16_t *total){size_t matches=0;*total=0;for(size_t i=0;i<L2_NODE_CAP;i++)if(s->nodes[i].used&&s->nodes[i].workspace==workspace&&s->nodes[i].role==(uint8_t)role){matches++;*total=(uint16_t)(*total+s->nodes[i].count);}return matches;}
+static size_t edge_matches(const L2State *s,uint8_t workspace,L2Role from,L2Role to,uint16_t *total){size_t matches=0;*total=0;for(size_t i=0;i<L2_EDGE_CAP;i++)if(s->edges[i].used&&s->edges[i].workspace==workspace&&s->edges[i].from_role==(uint8_t)from&&s->edges[i].to_role==(uint8_t)to){matches++;*total=(uint16_t)(*total+s->edges[i].count);}return matches;}
+static size_t triple_matches(const L2State *s,uint8_t workspace,L2Role a,L2Role b,L2Role c,uint16_t *total){size_t matches=0;*total=0;for(size_t i=0;i<L2_TRIPLE_CAP;i++)if(s->triples[i].used&&s->triples[i].workspace==workspace&&s->triples[i].r1==(uint8_t)a&&s->triples[i].r2==(uint8_t)b&&s->triples[i].r3==(uint8_t)c){matches++;*total=(uint16_t)(*total+s->triples[i].count);}return matches;}
+static L2State seeded_aging_hole_state(void){
+    L2State s;l2_init(&s);
+    s.completed_session_generation=15U;
+    s.workspaces[0].completed_sessions=15U;
+    s.workspaces[0].accepted_transitions=30U;
+    s.nodes[0]=(L2Node){.workspace=1U,.role=L2_ROLE_OTHER,.used=1U,.count=1U,.last_generation=1U};
+    s.nodes[1]=(L2Node){.workspace=1U,.role=L2_ROLE_CODE_EDIT,.used=1U,.count=8U,.last_generation=15U};
+    s.edges[0]=(L2Edge){.workspace=1U,.from_role=L2_ROLE_OTHER,.to_role=L2_ROLE_CODE_EDIT,.used=1U,.count=1U,.last_generation=1U};
+    s.edges[1]=(L2Edge){.workspace=1U,.from_role=L2_ROLE_CODE_EDIT,.to_role=L2_ROLE_BUILD_TEST,.used=1U,.count=8U,.last_generation=15U};
+    s.triples[0]=(L2Triple){.workspace=1U,.r1=L2_ROLE_OTHER,.r2=L2_ROLE_CODE_EDIT,.r3=L2_ROLE_BUILD_TEST,.used=1U,.count=1U,.last_generation=1U};
+    s.triples[1]=(L2Triple){.workspace=1U,.r1=L2_ROLE_CODE_EDIT,.r2=L2_ROLE_BUILD_TEST,.r3=L2_ROLE_DOC_VIEW,.used=1U,.count=8U,.last_generation=15U};
+    return s;
+}
+static void aging_holes_preserve_unique_relationships(void){
+    L2State s=seeded_aging_hole_state(),again=seeded_aging_hole_state();
+    uint64_t seq=1U,time=1U,seq_again=1U,time_again=1U;
+    complete_three(&s,&seq,&time,1U);
+    complete_three(&again,&seq_again,&time_again,1U);
+    CHECK(memcmp(&s,&again,sizeof(s))==0&&s.completed_session_generation==16U);
+    uint16_t count=0;
+    CHECK(node_matches(&s,1U,L2_ROLE_CODE_EDIT,&count)==1U&&count==4U);
+    CHECK(edge_matches(&s,1U,L2_ROLE_CODE_EDIT,L2_ROLE_BUILD_TEST,&count)==1U&&count==4U);
+    CHECK(triple_matches(&s,1U,L2_ROLE_CODE_EDIT,L2_ROLE_BUILD_TEST,L2_ROLE_DOC_VIEW,&count)==1U&&count==4U);
+    complete_three(&s,&seq,&time,1U);
+    complete_three(&again,&seq_again,&time_again,1U);
+    CHECK(memcmp(&s,&again,sizeof(s))==0&&s.completed_session_generation==17U);
+    CHECK(node_matches(&s,1U,L2_ROLE_CODE_EDIT,&count)==1U&&count==5U);
+    CHECK(edge_matches(&s,1U,L2_ROLE_CODE_EDIT,L2_ROLE_BUILD_TEST,&count)==1U&&count==5U);
+    CHECK(triple_matches(&s,1U,L2_ROLE_CODE_EDIT,L2_ROLE_BUILD_TEST,L2_ROLE_DOC_VIEW,&count)==1U&&count==5U);
+    L2Event context={seq++,time++,L2_QUALITY_OK,L2_EVENT_CONTEXT,0,L2_ROLE_NONE,L2_ACTIVITY_INTERACTIVE,L2_CONDITION_QUIET,true};
+    CHECK(l2_step(&s,&context,NULL)==L2_STEP_ACCEPTED);
+    L2Event query=event(seq++,time++,L2_EVENT_QUERY,1U,L2_ROLE_NONE);L2QueryResult result;
+    CHECK(l2_step(&s,&query,&result)==L2_STEP_QUERY_RESULT);
+    expect_candidate(result,1U,L2_ROLE_CODE_EDIT,L2_ROLE_BUILD_TEST,L2_ROLE_DOC_VIEW);
+    CHECK(result.completed_sessions==9U&&result.accepted_transitions==18U&&result.triple_count==5U);
+}
+static L2State full_equal_count_state(void){
+    L2State s;l2_init(&s);s.completed_session_generation=10U;
+    for(size_t i=0;i<L2_NODE_CAP;i++)s.nodes[i]=(L2Node){.workspace=(uint8_t)(i/8U+1U),.role=(uint8_t)(i%8U+1U),.used=1U,.count=5U,.last_generation=10U};
+    for(size_t i=0;i<L2_EDGE_CAP;i++)s.edges[i]=(L2Edge){.workspace=1U,.from_role=(uint8_t)(i/8U+1U),.to_role=(uint8_t)(i%8U+1U),.used=1U,.count=5U,.last_generation=10U};
+    for(size_t i=0;i<L2_TRIPLE_CAP;i++)s.triples[i]=(L2Triple){.workspace=1U,.r1=1U,.r2=(uint8_t)(i/8U+1U),.r3=(uint8_t)(i%8U+1U),.used=1U,.count=5U,.last_generation=10U};
+    return s;
+}
+static void deterministic_eviction_is_exact(void){
+    L2State a=full_equal_count_state(),b=full_equal_count_state();uint64_t as=1U,at=1U,bs=1U,bt=1U;
+    complete_three(&a,&as,&at,4U);complete_three(&b,&bs,&bt,4U);CHECK(memcmp(&a,&b,sizeof(a))==0);
+    CHECK(a.nodes[0].workspace==4U&&a.nodes[0].role==L2_ROLE_DOC_VIEW&&a.nodes[0].count==1U);
+    CHECK(a.edges[0].workspace==4U&&a.edges[0].from_role==L2_ROLE_BUILD_TEST&&a.edges[0].to_role==L2_ROLE_DOC_VIEW&&a.edges[0].count==1U);
+    CHECK(a.triples[0].workspace==4U&&a.triples[0].r1==L2_ROLE_CODE_EDIT&&a.triples[0].r2==L2_ROLE_BUILD_TEST&&a.triples[0].r3==L2_ROLE_DOC_VIEW&&a.triples[0].count==1U);
+}
+static void common_safe_outcomes(const L2State *left,const L2State *right){L2State states[2]={*left,*right};for(size_t i=0;i<2;i++){L2Event context={states[i].expected_seq,states[i].last_valid_ms+1U,L2_QUALITY_OK,L2_EVENT_CONTEXT,0,L2_ROLE_NONE,L2_ACTIVITY_INTERACTIVE,L2_CONDITION_MEMORY_PRESSURE,true};CHECK(l2_step(&states[i],&context,NULL)==L2_STEP_ACCEPTED);L2Event query=event(states[i].expected_seq,states[i].last_valid_ms+1U,L2_EVENT_QUERY,1,L2_ROLE_NONE);L2QueryResult result;CHECK(l2_step(&states[i],&query,&result)==L2_STEP_QUERY_RESULT);CHECK(result.status==L2_RESULT_BLOCKED&&result.reason==L2_REASON_RESOURCE_CONSTRAINED&&!result.requires_user_approval&&result.roles[0]==L2_ROLE_NONE&&result.roles[1]==L2_ROLE_NONE&&result.roles[2]==L2_ROLE_NONE);L2QueryResult invalid=l2_query_workspace(&states[i],0,states[i].last_valid_ms);CHECK(invalid.status==L2_RESULT_NONE&&invalid.reason==L2_REASON_INVALID_CONTEXT&&!invalid.requires_user_approval);}}
+static void capacity_and_saturation(const char *root){Replay c=replay(root,"capacity.csv",true);size_t nodes=0,edges=0,triples=0;for(size_t i=0;i<L2_NODE_CAP;i++)nodes+=c.state.nodes[i].used?1U:0U;for(size_t i=0;i<L2_EDGE_CAP;i++)edges+=c.state.edges[i].used?1U:0U;for(size_t i=0;i<L2_TRIPLE_CAP;i++)triples+=c.state.triples[i].used?1U:0U;CHECK(nodes<=L2_NODE_CAP&&edges<=L2_EDGE_CAP&&triples<=L2_TRIPLE_CAP&&c.query_count==1&&c.queries[0].status==L2_RESULT_CANDIDATE);Replay z=replay(root,"saturation_100k.csv",true);CHECK(z.rows==100000&&z.state.completed_session_generation==10000);for(size_t i=0;i<L2_NODE_CAP;i++)CHECK(z.state.nodes[i].count<=UINT16_MAX);for(size_t i=0;i<L2_EDGE_CAP;i++)CHECK(z.state.edges[i].count<=UINT16_MAX);for(size_t i=0;i<L2_TRIPLE_CAP;i++)CHECK(z.state.triples[i].count<=UINT16_MAX);L2State injected=z.state;injected.nodes[0].used=1;injected.nodes[0].workspace=1;injected.nodes[0].role=L2_ROLE_CODE_EDIT;injected.nodes[0].count=UINT16_MAX;uint64_t seq=injected.expected_seq,time=injected.last_valid_ms;L2Event b=event(seq++,++time,L2_EVENT_SESSION_BEGIN,1,L2_ROLE_NONE);CHECK(l2_step(&injected,&b,NULL)==L2_STEP_ACCEPTED);for(int i=0;i<3;i++){L2Event r=event(seq++,++time,L2_EVENT_ROLE,1,L2_ROLE_CODE_EDIT);CHECK(l2_step(&injected,&r,NULL)==L2_STEP_ACCEPTED);}L2Event end=event(seq,++time,L2_EVENT_SESSION_END,1,L2_ROLE_NONE);CHECK(l2_step(&injected,&end,NULL)==L2_STEP_ACCEPTED);bool found=false;for(size_t i=0;i<L2_NODE_CAP;i++)if(injected.nodes[i].used&&injected.nodes[i].workspace==1&&injected.nodes[i].role==L2_ROLE_CODE_EDIT){CHECK(injected.nodes[i].count<=UINT16_MAX);found=true;}CHECK(found);}
+int main(int argc,char **argv){if(argc!=2){fprintf(stderr,"usage: %s FIXTURE_DIR\n",argv[0]);return 2;}CHECK(sizeof(L2State)<=8192);L2State x,y;l2_init(&x);l2_init(&y);CHECK(memcmp(&x,&y,sizeof(x))==0);Replay a=replay(argv[1],"a.csv",true),a_again=replay(argv[1],"a.csv",true),b=replay(argv[1],"b.csv",true);CHECK(a.query_count==1&&b.query_count==1&&memcmp(&a.state,&a_again.state,sizeof(a.state))==0);expect_candidate(a.queries[0],1,L2_ROLE_CODE_EDIT,L2_ROLE_BUILD_TEST,L2_ROLE_DOC_VIEW);expect_candidate(b.queries[0],1,L2_ROLE_REFERENCES,L2_ROLE_CANVAS,L2_ROLE_ASSET_GROUP);CHECK(memcmp(&a.state,&b.state,sizeof(a.state))!=0);Replay m=replay(argv[1],"mixed.csv",true);CHECK(m.query_count==2);expect_candidate(m.queries[0],1,L2_ROLE_CODE_EDIT,L2_ROLE_BUILD_TEST,L2_ROLE_DOC_VIEW);expect_candidate(m.queries[1],2,L2_ROLE_REFERENCES,L2_ROLE_CANVAS,L2_ROLE_ASSET_GROUP);Replay cold=replay(argv[1],"cold.csv",true),context=replay(argv[1],"context_only.csv",true),reset=replay(argv[1],"reset_late.csv",true),gapped=replay(argv[1],"gapped.csv",true),invalid=replay(argv[1],"invalid.csv",true),stale=replay(argv[1],"stale.csv",true),pressure=replay(argv[1],"pressure_block.csv",true);CHECK(cold.queries[0].reason==L2_REASON_WARMING_UP&&context.queries[0].reason==L2_REASON_WARMING_UP&&reset.queries[0].reason==L2_REASON_WARMING_UP&&gapped.queries[0].reason==L2_REASON_WARMING_UP&&invalid.queries[0].reason==L2_REASON_WARMING_UP);CHECK(stale.queries[0].reason==L2_REASON_STALE_CONTEXT);CHECK(pressure.queries[0].status==L2_RESULT_BLOCKED&&pressure.queries[0].reason==L2_REASON_RESOURCE_CONSTRAINED);(void)replay(argv[1],"bad_provenance.csv",false);L2State before=a.state;L2QueryResult again=l2_query_workspace(&a.state,1,a.state.context_ms);CHECK(memcmp(&before,&a.state,sizeof(before))==0&&again.status==L2_RESULT_CANDIDATE);L2State restarted;l2_init(&restarted);CHECK(restarted.workspaces[0].completed_sessions==0&&l2_query_workspace(&restarted,1,0).status==L2_RESULT_NONE);common_safe_outcomes(&a.state,&b.state);parser_negatives();core_adversarial();invalid_input_aborts_session();aging_is_exact();aging_holes_preserve_unique_relationships();deterministic_eviction_is_exact();parser_binary_negatives();capacity_and_saturation(argv[1]);printf("PASS: L2 V0.1 context, A/B/mixed memory, reset, abstention, strict framing, unique relationships, capacity, saturation, aging, deterministic eviction, common safety, and query nonmutation; state_bytes=%zu\n",sizeof(L2State));return 0;}
