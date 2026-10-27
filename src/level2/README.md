@@ -51,3 +51,23 @@ Example finite replay:
 ```
 
 Only the checked-in simulated fixtures are authorized for this milestone.
+
+## V0.2a offline evaluator preflight
+
+`evaluation/v02a/` is a finite, standard-library-only test harness for the
+scientific measurement path. It keeps permitted pre-query histories, permitted
+query safety context and hidden future-task truth in separate files; executes
+the frozen V0.1 observer plus recent/static/NONE comparators; checks a toy
+known-answer scorer; and verifies a canonical SHA-256 calibration lock before
+opening one explicitly named non-study sentinel.
+
+```sh
+make v02a-fixtures
+make v02a-preflight
+make v02a-bench
+```
+
+These targets do not generate or score a V0.2 held-out study. A passing
+preflight establishes evaluator-tooling readiness only. It does not establish
+L2 utility, appropriate individuality, real-workflow transfer, monitoring or
+OS-action authority.
