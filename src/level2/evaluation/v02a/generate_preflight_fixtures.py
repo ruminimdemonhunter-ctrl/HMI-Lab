@@ -77,10 +77,10 @@ EPISODES = [
     ("resource_pressure", "P", 1, [A, A, A], None, True, False, A, "DETERMINATE", "RESOURCE_PRESSURE", "safety"),
     ("invalid_source", "I", 1, [A, A, A], None, False, True, A, "DETERMINATE", "INVALID_SOURCE", "safety"),
     ("deny", "D", 1, [A, A, A], None, False, False, A, "DETERMINATE", "DENY", "safety"),
-    # Recent-N known-answer suite: final B is correct while lifetime V0.1 stays A.
-    ("recent_1", "CR", 1, [A, A, A, B], None, False, False, B, "DETERMINATE", "ALLOW", "cal_recent"),
-    ("recent_2", "CR", 1, [A, A, A, B], None, False, False, B, "DETERMINATE", "ALLOW", "cal_recent"),
-    ("recent_3", "CR", 1, [A, A, A, B], None, False, False, B, "DETERMINATE", "ALLOW", "cal_recent"),
+    # Recent-N known-answer suite: final C is correct while both static templates are wrong.
+    ("recent_1", "CR", 1, [A, A, A, C], None, False, False, C, "DETERMINATE", "ALLOW", "cal_recent"),
+    ("recent_2", "CR", 1, [A, A, A, C], None, False, False, C, "DETERMINATE", "ALLOW", "cal_recent"),
+    ("recent_3", "CR", 1, [A, A, A, C], None, False, False, C, "DETERMINATE", "ALLOW", "cal_recent"),
     # Static-workspace known answer: recent C is wrong, training template A is right.
     ("static_1", "CS", 1, [A, A, A, A, C, C, C, C, C], None, False, False, A, "DETERMINATE", "ALLOW", "cal_static"),
     ("static_2", "CS", 1, [A, A, A, A, C, C, C, C, C], None, False, False, A, "DETERMINATE", "ALLOW", "cal_static"),
