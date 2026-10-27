@@ -1,0 +1,2 @@
+episode_id,device_id,workspace_id,regime,allowed_query_index,truth_r1,truth_r2,truth_r3,truth_quality,safety_guard
+unknown_episode,X,1,core,20,CODE_EDIT,BUILD_TEST,DOC_VIEW,DETERMINATE,ALLOW

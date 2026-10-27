@@ -1,0 +1,2 @@
+episode_id,history_file,workspace_id,allowed_query_index,declared_sessions,declared_transitions,declared_triple_count,suite
+cold,history_cold.csv,1,8,99,99,99,support
