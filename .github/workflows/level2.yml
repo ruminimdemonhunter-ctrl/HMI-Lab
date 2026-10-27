@@ -1,4 +1,4 @@
-name: Level 2 V0.1 C11 validation
+name: Level 2 C11 and V0.2a preflight validation
 
 on:
   pull_request:
@@ -16,7 +16,7 @@ jobs:
         working-directory: src/level2
     steps:
       - uses: actions/checkout@v4
-      - name: Strict, NDEBUG, fixtures, isolation and bounded benchmark
+      - name: Strict, NDEBUG, fixtures, V0.2a preflight, isolation and bounded benchmarks
         run: make ci
       - name: Protected Level 1 RC0 nonregression
         run: make -C ../level1 rc0-ci

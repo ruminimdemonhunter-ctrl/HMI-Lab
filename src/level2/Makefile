@@ -4,7 +4,7 @@ CPPFLAGS ?=
 LDLIBS ?=
 FIXTURES = evaluation/fixtures_v1
 
-.PHONY: all test test-ndebug sanitize corpus-verify bench audit ci qualification clean
+.PHONY: all test test-ndebug sanitize corpus-verify v02a-fixtures v02a-preflight v02a-bench bench audit ci qualification clean
 all: l2_fixture_cli l2_test l2_l1_isolation_test l2_bench
 
 l2_fixture_cli: l2_fixture_cli.c l2_parser.c l2_state.c l2_parser.h l2_state.h
@@ -22,7 +22,16 @@ l2_bench: l2_bench.c l2_parser.c l2_state.c l2_parser.h l2_state.h
 corpus-verify:
 	python3 evaluation/verify_l2_v01_fixtures.py
 
-test: all corpus-verify
+v02a-fixtures:
+	python3 evaluation/v02a/verify_preflight_fixtures.py
+
+v02a-preflight: l2_fixture_cli v02a-fixtures
+	python3 evaluation/v02a/preflight_runner.py --fixture-cli ./l2_fixture_cli
+
+v02a-bench: l2_fixture_cli v02a-fixtures
+	python3 evaluation/v02a/preflight_runner.py --fixture-cli ./l2_fixture_cli --benchmark-repetitions 10
+
+test: all corpus-verify v02a-preflight
 	./l2_test $(FIXTURES)
 	./l2_l1_isolation_test
 	sh ./fixture_cli_test.sh
@@ -48,6 +57,7 @@ ci:
 	$(MAKE) test-ndebug
 	$(MAKE) clean all test
 	$(MAKE) bench
+	$(MAKE) v02a-bench
 
 qualification:
 	$(MAKE) ci
