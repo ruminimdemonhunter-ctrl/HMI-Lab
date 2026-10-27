@@ -73,27 +73,31 @@ def parse_predictions(path: Path) -> dict[tuple[str, str], dict[str, str]]:
     return parsed
 
 
-def score(path: Path, suite: str | None = None) -> dict[str, Score]:
+def score(path: Path, suite: str | None = None,
+          expected_candidates: tuple[str, ...] = ALLOWED_CANDIDATES) -> dict[str, Score]:
     predictions = parse_predictions(path)
     truth_rows = strict_rows(FIX / "truth.csv", TRUTH_HEADER, 64)
+    truth_ids = {row["episode_id"] for row in truth_rows}
+    if len(truth_ids) != len(truth_rows):
+        raise ScoreInvalid("duplicate truth episode")
+    if (not expected_candidates or len(set(expected_candidates)) != len(expected_candidates) or
+            any(candidate not in ALLOWED_CANDIDATES for candidate in expected_candidates)):
+        raise ScoreInvalid("expected candidate set")
+    expected_panel = {(episode, candidate) for episode in truth_ids
+                      for candidate in expected_candidates}
+    if set(predictions) != expected_panel:
+        raise ScoreInvalid("missing/extra prediction panel")
     selected = [row for row in truth_rows if suite is None or row["regime"] == suite]
     ids = {row["episode_id"] for row in selected}
     if not selected:
         raise ScoreInvalid("empty suite")
-    candidates = {candidate for episode, candidate in predictions if episode in ids}
-    if not candidates:
-        raise ScoreInvalid("no candidates")
-    expected = {(episode, candidate) for episode in ids for candidate in candidates}
-    actual = {(episode, candidate) for episode, candidate in predictions if episode in ids}
-    if actual != expected:
-        raise ScoreInvalid("missing/extra prediction")
-    totals = {candidate: [0, 0, 0] for candidate in candidates}
+    totals = {candidate: [0, 0, 0] for candidate in expected_candidates}
     for truth in selected:
         guard = truth["safety_guard"]
         if guard not in GUARDS:
             raise ScoreInvalid("guard")
         target = (truth["truth_r1"], truth["truth_r2"], truth["truth_r3"])
-        for candidate in candidates:
+        for candidate in expected_candidates:
             prediction = predictions[(truth["episode_id"], candidate)]
             status = prediction["status"]
             roles = (prediction["r1"], prediction["r2"], prediction["r3"])

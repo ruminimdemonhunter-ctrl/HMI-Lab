@@ -97,7 +97,10 @@ def run_baseline(candidate: str, episode: str, state: dict[str, object],
         n = int(candidate.removeprefix("RECENT_"))
         if n not in GRID:
             raise ValueError("recent grid")
-        triple = best(list(state["session_triples"])[-n:])
+        recent_sessions = list(state["session_roles"])[-n:]
+        triples = [roles[index:index + 3] for roles in recent_sessions
+                   for index in range(len(roles) - 2)]
+        triple = best(triples)
     return Prediction(episode, candidate, "CANDIDATE", triple, "SUPPORTED_HISTORY")
 
 

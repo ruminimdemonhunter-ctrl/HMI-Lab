@@ -123,7 +123,7 @@ def inspect_history(path: Path) -> dict[str, object]:
             triples[triple] = triples.get(triple, 0) + 1
     return {"rows": len(rows), "workspace": query_workspace, "sessions": len(matching),
             "transitions": transitions, "triple_count": max(triples.values(), default=0),
-            "triples": triples, "session_triples": [roles[:3] for roles in matching],
+            "triples": triples, "session_roles": matching,
             "guard": guard}
 
 

@@ -12,12 +12,12 @@ import time
 from pathlib import Path
 
 from baseline_preflight import (GRID, Prediction, generate_predictions, load_inputs,
-                                run_baseline)
+                                run_baseline, best)
 from lock_preflight import (BOUND, LockInvalid, REPO, SENTINEL, verify_then_open,
                             write_lock)
 from toy_scorer import (ScoreInvalid, episode_loss, parse_predictions, score, select)
-from verify_preflight_fixtures import (FIX, TRUTH_HEADER, verify, verify_manifest,
-                                       verify_source_manifest)
+from verify_preflight_fixtures import (EVENT_HEADER, FIX, TRUTH_HEADER, inspect_history,
+                                       verify, verify_manifest, verify_source_manifest)
 
 try:
     import resource
@@ -78,6 +78,102 @@ def prediction_negative_tests(predictions: Path, temp: Path) -> int:
     return len(mutations)
 
 
+def scorer_completeness_tests(predictions: Path, temp: Path) -> int:
+    rows = predictions.read_text(encoding="ascii").splitlines()
+    mutations = {
+        "missing_comparator_panel": [rows[0], *[row for row in rows[1:]
+                                                   if ",STATIC_GLOBAL," not in row]],
+        "unknown_episode": [*rows,
+                            "ghost_episode,RECENT_1,NONE,NONE,NONE,NONE,SAFE_ABSTAIN"],
+    }
+    for name, content in mutations.items():
+        path = temp / f"bad_score_{name}.csv"
+        path.write_text("\n".join(content) + "\n", encoding="ascii", newline="")
+        try:
+            score(path)
+        except ScoreInvalid:
+            continue
+        raise AssertionError(f"incomplete/ghost score panel accepted: {name}")
+    return len(mutations)
+
+
+def write_history(path: Path, sessions: list[tuple[int, tuple[str, ...]] | str],
+                  query_workspace: int) -> None:
+    rows = []
+    seq = 0
+
+    def add(quality: str, event: str, workspace: int, role: str = "NONE") -> None:
+        nonlocal seq
+        seq += 1
+        rows.append(["HMI_L2_EVENT_V1", str(seq), str(seq * 1000), quality, event,
+                     str(workspace), role, "NONE", "NONE", "SIMULATED"])
+
+    add("OK", "CONTEXT", query_workspace)
+    for item in sessions:
+        if item == "RESET":
+            add("RESET", "RESET", 0)
+            continue
+        workspace, roles = item
+        add("OK", "SESSION_BEGIN", workspace)
+        for role in roles:
+            add("OK", "ROLE", workspace, role)
+        add("OK", "SESSION_END", workspace)
+    add("OK", "QUERY", query_workspace)
+    with path.open("w", encoding="ascii", newline="") as stream:
+        writer = csv.writer(stream, lineterminator="\n")
+        writer.writerow(EVENT_HEADER)
+        writer.writerows(rows)
+
+
+def recent_sequence_regression_tests(context: dict[str, str], temp: Path) -> None:
+    four_role = ("REFERENCES", "CANVAS", "ASSET_GROUP", "EXPORT")
+    five_role = ("REFERENCES", "CANVAS", "ASSET_GROUP", "EXPORT", "OTHER")
+    sessions = [A, B, C, A, B, C, four_role, five_role]
+    state = {
+        "workspace": 1,
+        "sessions": len(sessions),
+        "transitions": sum(len(roles) - 1 for roles in sessions),
+        "triple_count": 3,
+        "session_roles": sessions,
+    }
+    for n in GRID:
+        windows = [roles[index:index + 3] for roles in sessions[-n:]
+                   for index in range(len(roles) - 2)]
+        expected = best(windows)
+        actual = run_baseline(f"RECENT_{n}", "recent_sequence_contract", state, context)
+        check(actual.roles == expected, f"RECENT_{n} omitted a contiguous session triple")
+    four_state = dict(state, session_roles=[A, A, four_role], sessions=3,
+                      transitions=7, triple_count=2)
+    expected_four = best([four_role[index:index + 3]
+                          for index in range(len(four_role) - 2)])
+    actual_four = run_baseline("RECENT_1", "four_role_contract", four_state, context)
+    check(actual_four.roles == expected_four, "four-role later triple was discarded")
+
+    mixed_path = temp / "recent_mixed_reset.csv"
+    mixed_sessions = [(1, B), "RESET", (2, five_role), (1, four_role),
+                      (1, four_role), (1, five_role)]
+    write_history(mixed_path, mixed_sessions, 1)
+    mixed = inspect_history(mixed_path)
+    check(mixed["sessions"] == 3 and mixed["transitions"] == 10 and
+          mixed["triple_count"] == 3 and mixed["session_roles"] ==
+          [four_role, four_role, five_role], "workspace/reset session filtering")
+    for n in GRID:
+        recent = list(mixed["session_roles"])[-n:]
+        expected = best([roles[index:index + 3] for roles in recent
+                         for index in range(len(roles) - 2)])
+        actual = run_baseline(f"RECENT_{n}", "mixed_reset_contract", mixed, context)
+        check(actual.roles == expected, f"RECENT_{n} mixed/reset mismatch")
+
+    exact = {"workspace": 1, "sessions": 3, "transitions": 6, "triple_count": 2,
+             "session_roles": [A, A, A]}
+    check(run_baseline("RECENT_1", "exact_support", exact, context).status == "CANDIDATE",
+          "exact support rejected")
+    for field, value in (("sessions", 2), ("transitions", 5), ("triple_count", 1)):
+        insufficient = dict(exact, **{field: value})
+        check(run_baseline("RECENT_1", f"insufficient_{field}", insufficient,
+                           context).status == "NONE", f"{field} support bypass")
+
+
 def selection_digest(scores_by_suite) -> str:
     rows = []
     for suite in sorted(scores_by_suite):
@@ -108,6 +204,8 @@ def lock_tests(lock_path: Path, predictions: Path, digest: str, temp: Path) -> t
     base = lock_path.read_bytes()
     text = base.decode("ascii").splitlines()
     variants = []
+    variants.append(("old_schema", base.decode("ascii").replace(
+        "schema=HMI_L2_V02A_LOCK_V2", "schema=HMI_L2_V02A_LOCK_V1")))
     variants.append(("missing", "\n".join(text[:-1]) + "\n"))
     variants.append(("duplicate", "\n".join(text + [text[-1]]) + "\n"))
     variants.append(("unknown", "\n".join(text + ["unknown=x"]) + "\n"))
@@ -194,6 +292,8 @@ def run_once(fixture_cli: Path, temp: Path):
         raise AssertionError("invalid N accepted")
     arithmetic_tests()
     negative_predictions = prediction_negative_tests(predictions, temp)
+    completeness_negatives = scorer_completeness_tests(predictions, temp)
+    recent_sequence_regression_tests(contexts["supported_a"], temp)
     selected, score_sets, digest = calibration_tests(predictions)
     lock_path = temp / "calibration.lock"
     write_lock(lock_path, predictions, digest)
@@ -202,7 +302,8 @@ def run_once(fixture_cli: Path, temp: Path):
     check(lock_path.read_bytes() == (HERE / "locked" / "calibration.lock").read_bytes(),
           "frozen calibration lock drift")
     lock_rejections, heldout_opens = lock_tests(lock_path, predictions, digest, temp)
-    return predictions, selected, digest, negative_predictions, lock_rejections, heldout_opens
+    return (predictions, selected, digest, negative_predictions + completeness_negatives,
+            lock_rejections, heldout_opens)
 
 
 def main() -> int:

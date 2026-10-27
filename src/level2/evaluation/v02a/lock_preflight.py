@@ -40,7 +40,7 @@ def sha(data: bytes) -> str:
 
 
 def ordered_values(predictions: Path, selection_digest: str) -> list[tuple[str, str]]:
-    values = [("schema", "HMI_L2_V02A_LOCK_V1"),
+    values = [("schema", "HMI_L2_V02A_LOCK_V2"),
               ("mode", "TOY_PREFLIGHT_ONLY"),
               ("grid_recent_n", "1|2|3|5|8"),
               ("selected_cal_recent", "RECENT_1"),
