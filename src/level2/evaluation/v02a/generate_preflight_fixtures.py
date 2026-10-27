@@ -111,6 +111,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     metadata = []
     truth = []
+    contexts = []
     for (episode, device, workspace, sessions, reset_after, pressure,
          invalid, expected, quality, guard, suite) in EPISODES:
         text = history(sessions, workspace=workspace, reset_after=reset_after,
@@ -122,6 +123,11 @@ def main() -> int:
                          completed, transitions, triple_count, suite])
         truth.append([episode, device, workspace, suite,
                       len(text.splitlines()) - 1, *expected, quality, guard])
+        contexts.append([episode,
+                         "INVALID" if guard == "INVALID_SOURCE" else "OK",
+                         "DENY" if guard == "DENY" else "ALLOW",
+                         "PRESSURE" if guard == "RESOURCE_PRESSURE" else "QUIET",
+                         "FRESH"])
 
     write_csv(OUT / "metadata.csv",
               ["episode_id", "history_file", "workspace_id", "allowed_query_index",
@@ -131,6 +137,9 @@ def main() -> int:
               ["episode_id", "device_id", "workspace_id", "regime", "allowed_query_index",
                "truth_r1", "truth_r2", "truth_r3", "truth_quality", "safety_guard"],
               truth)
+    write_csv(OUT / "query_context.csv",
+              ["episode_id", "source_quality", "permission", "resource_state", "freshness"],
+              contexts)
     write_csv(OUT / "training.csv",
               ["training_id", "workspace_id", "r1", "r2", "r3"],
               [["train_a1", 1, *A], ["train_a2", 1, *A], ["train_a3", 1, *A],

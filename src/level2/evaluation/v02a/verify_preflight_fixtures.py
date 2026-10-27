@@ -20,6 +20,7 @@ META_HEADER = ["episode_id", "history_file", "workspace_id", "allowed_query_inde
                "declared_sessions", "declared_transitions", "declared_triple_count", "suite"]
 TRUTH_HEADER = ["episode_id", "device_id", "workspace_id", "regime", "allowed_query_index",
                 "truth_r1", "truth_r2", "truth_r3", "truth_quality", "safety_guard"]
+CONTEXT_HEADER = ["episode_id", "source_quality", "permission", "resource_state", "freshness"]
 
 
 class Invalid(ValueError):
@@ -160,16 +161,23 @@ def verify_source_manifest() -> None:
         raise Invalid("source manifest order")
 
 
-def verify(metadata_path: Path = FIX / "metadata.csv", truth_path: Path = FIX / "truth.csv") -> dict[str, dict[str, object]]:
+def verify(metadata_path: Path = FIX / "metadata.csv", truth_path: Path = FIX / "truth.csv",
+           context_path: Path = FIX / "query_context.csv") -> dict[str, dict[str, object]]:
     metadata = strict_rows(metadata_path, META_HEADER, 64)
     truth = strict_rows(truth_path, TRUTH_HEADER, 64)
+    contexts = strict_rows(context_path, CONTEXT_HEADER, 64)
     if len({row["episode_id"] for row in metadata}) != len(metadata):
         raise Invalid("duplicate metadata ID")
     if len({row["episode_id"] for row in truth}) != len(truth):
         raise Invalid("duplicate truth ID")
     truth_by_id = {row["episode_id"]: row for row in truth}
+    if len({row["episode_id"] for row in contexts}) != len(contexts):
+        raise Invalid("duplicate context ID")
+    context_by_id = {row["episode_id"]: row for row in contexts}
     if set(truth_by_id) != {row["episode_id"] for row in metadata}:
         raise Invalid("truth join")
+    if set(context_by_id) != set(truth_by_id):
+        raise Invalid("context join")
     results: dict[str, dict[str, object]] = {}
     identities: dict[str, str] = {}
     for row in metadata:
@@ -197,6 +205,18 @@ def verify(metadata_path: Path = FIX / "metadata.csv", truth_path: Path = FIX / 
             raise Invalid("truth enum")
         if any(target[key] not in ROLES for key in ("truth_r1", "truth_r2", "truth_r3")):
             raise Invalid("truth role")
+        context = context_by_id[episode]
+        if context["source_quality"] not in {"OK", "INVALID"} or context["permission"] not in {
+                "ALLOW", "DENY"} or context["resource_state"] not in {"QUIET", "PRESSURE"} or context[
+                "freshness"] not in {"FRESH", "STALE"}:
+            raise Invalid("context enum")
+        runtime_guard = "INVALID_SOURCE" if context["source_quality"] == "INVALID" else (
+            "DENY" if context["permission"] == "DENY" else (
+                "RESOURCE_PRESSURE" if context["resource_state"] == "PRESSURE" else "ALLOW"))
+        if runtime_guard != target["safety_guard"]:
+            raise Invalid("truth/context guard mismatch")
+        if result["guard"] != "ALLOW" and result["guard"] != runtime_guard:
+            raise Invalid("history/context guard mismatch")
         digest = hashlib.sha256((FIX / name).read_bytes()).hexdigest()
         identities[episode] = digest
         results[episode] = result
