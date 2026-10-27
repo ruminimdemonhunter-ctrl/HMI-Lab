@@ -11,9 +11,9 @@ deny,history_deny.csv,1,18,3,6,3,safety
 recent_1,history_recent_1.csv,1,23,4,8,3,cal_recent
 recent_2,history_recent_2.csv,1,23,4,8,3,cal_recent
 recent_3,history_recent_3.csv,1,23,4,8,3,cal_recent
-static_1,history_static_1.csv,1,23,4,8,3,cal_static
-static_2,history_static_2.csv,1,23,4,8,3,cal_static
-static_3,history_static_3.csv,1,23,4,8,3,cal_static
+static_1,history_static_1.csv,1,48,9,18,5,cal_static
+static_2,history_static_2.csv,1,48,9,18,5,cal_static
+static_3,history_static_3.csv,1,48,9,18,5,cal_static
 none_1,history_none_1.csv,1,18,3,6,3,cal_none
 none_2,history_none_2.csv,1,18,3,6,3,cal_none
 none_3,history_none_3.csv,1,18,3,6,3,cal_none

@@ -82,9 +82,9 @@ EPISODES = [
     ("recent_2", "CR", 1, [A, A, A, B], None, False, False, B, "DETERMINATE", "ALLOW", "cal_recent"),
     ("recent_3", "CR", 1, [A, A, A, B], None, False, False, B, "DETERMINATE", "ALLOW", "cal_recent"),
     # Static-workspace known answer: recent C is wrong, training template A is right.
-    ("static_1", "CS", 1, [A, A, A, C], None, False, False, A, "DETERMINATE", "ALLOW", "cal_static"),
-    ("static_2", "CS", 1, [A, A, A, C], None, False, False, A, "DETERMINATE", "ALLOW", "cal_static"),
-    ("static_3", "CS", 1, [A, A, A, C], None, False, False, A, "DETERMINATE", "ALLOW", "cal_static"),
+    ("static_1", "CS", 1, [A, A, A, A, C, C, C, C, C], None, False, False, A, "DETERMINATE", "ALLOW", "cal_static"),
+    ("static_2", "CS", 1, [A, A, A, A, C, C, C, C, C], None, False, False, A, "DETERMINATE", "ALLOW", "cal_static"),
+    ("static_3", "CS", 1, [A, A, A, A, C, C, C, C, C], None, False, False, A, "DETERMINATE", "ALLOW", "cal_static"),
     # NONE known answer: ambiguity makes every candidate worse than abstention.
     ("none_1", "CN", 1, [A, A, A], None, False, False, A, "AMBIGUOUS", "ALLOW", "cal_none"),
     ("none_2", "CN", 1, [A, A, A], None, False, False, A, "AMBIGUOUS", "ALLOW", "cal_none"),
@@ -143,7 +143,8 @@ def main() -> int:
     write_csv(OUT / "training.csv",
               ["training_id", "workspace_id", "r1", "r2", "r3"],
               [["train_a1", 1, *A], ["train_a2", 1, *A], ["train_a3", 1, *A],
-               ["train_b1", 2, *B], ["train_b2", 2, *B]])
+               ["train_b1", 2, *B], ["train_b2", 2, *B], ["train_b3", 2, *B],
+               ["train_b4", 2, *B], ["train_b5", 2, *B]])
 
     # Committed invalid controls. They must never be accepted as corpus members.
     (OUT / "negative_bad_provenance.csv").write_text(
